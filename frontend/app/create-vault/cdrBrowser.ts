@@ -217,6 +217,18 @@ type CdrPayload = {
   bytes: Uint8Array;
 };
 
+type VaultCreatedEvent = {
+  args: {
+    vaultId?: bigint;
+    beneficiary?: Address;
+    threshold?: number;
+    unlockDelay?: number;
+    heartbeatTimeout?: number;
+    cdrRef?: string;
+  };
+  blockNumber: bigint;
+};
+
 export type DecodedCdrPayload = {
   metadata: {
     kind: "text" | "file" | "external-file";
@@ -305,6 +317,56 @@ function secondsToDuration(seconds: number) {
   return { value: seconds, unit: "seconds" };
 }
 
+async function getCdrRefForVault(
+  publicClient: ReturnType<typeof createPublicClient>,
+  vaultId: bigint,
+  fromBlock: bigint,
+  fallback?: string,
+) {
+  const cdrRefEvents = await publicClient.getContractEvents({
+    address: clavisAddress,
+    abi: clavisAbi,
+    eventName: "CdrRefUpdated",
+    args: { vaultId },
+    fromBlock,
+    toBlock: "latest",
+  });
+
+  return cdrRefEvents.at(-1)?.args.cdrRef || fallback || "";
+}
+
+async function buildStoredVaultFromCreatedEvent(
+  publicClient: ReturnType<typeof createPublicClient>,
+  event: VaultCreatedEvent,
+) {
+  const vaultId = event.args.vaultId;
+  if (vaultId === undefined) return null;
+
+  const guardians = await publicClient.readContract({
+    address: clavisAddress,
+    abi: clavisAbi,
+    functionName: "getGuardians",
+    args: [vaultId],
+  });
+
+  const cdrRef = await getCdrRefForVault(publicClient, vaultId, event.blockNumber, event.args.cdrRef);
+  const heartbeat = secondsToDuration(Number(event.args.heartbeatTimeout ?? 0));
+  const unlockDelay = secondsToDuration(Number(event.args.unlockDelay ?? 0));
+
+  return {
+    vaultId: vaultId.toString(),
+    uuid: cdrRef ? Number(cdrRef) : undefined,
+    beneficiary: event.args.beneficiary?.toLowerCase(),
+    guardians: guardians.map((guardian) => guardian.toLowerCase()),
+    threshold: event.args.threshold ?? 2,
+    heartbeatValue: heartbeat.value,
+    heartbeatUnit: heartbeat.unit,
+    unlockDelayValue: unlockDelay.value,
+    unlockDelayUnit: unlockDelay.unit,
+    createdAt: event.blockNumber.toString(),
+  };
+}
+
 export async function loadLatestOwnerVaultFromChain() {
   if (!window.ethereum) return null;
   const accounts = (await window.ethereum.request({ method: "eth_accounts" })) as Address[];
@@ -328,40 +390,45 @@ export async function loadLatestOwnerVaultFromChain() {
   const latest = createdEvents.at(-1);
   if (!latest) return null;
 
-  const vaultId = latest.args.vaultId;
-  if (vaultId === undefined) return null;
-  const guardians = await publicClient.readContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "getGuardians",
-    args: [vaultId],
+  return buildStoredVaultFromCreatedEvent(publicClient, latest);
+}
+
+export async function loadLatestRecoveryVaultForConnectedWallet(role: "beneficiary" | "guardian") {
+  const account = await getConnectedAccount();
+  if (!account) return null;
+
+  const publicClient = createPublicClient({
+    chain: storyAeneid,
+    transport: http(rpcUrl),
   });
 
-  const cdrRefEvents = await publicClient.getContractEvents({
+  const createdEvents = await publicClient.getContractEvents({
     address: clavisAddress,
     abi: clavisAbi,
-    eventName: "CdrRefUpdated",
-    args: { vaultId },
-    fromBlock: latest.blockNumber,
+    eventName: "VaultCreated",
+    args: role === "beneficiary" ? { beneficiary: account } : undefined,
+    fromBlock: BigInt(0),
     toBlock: "latest",
   });
 
-  const cdrRef = cdrRefEvents.at(-1)?.args.cdrRef || latest.args.cdrRef || "";
-  const heartbeat = secondsToDuration(Number(latest.args.heartbeatTimeout ?? 0));
-  const unlockDelay = secondsToDuration(Number(latest.args.unlockDelay ?? 0));
+  for (const event of [...createdEvents].reverse()) {
+    const vaultId = event.args.vaultId;
+    if (vaultId === undefined) continue;
 
-  return {
-    vaultId: vaultId.toString(),
-    uuid: cdrRef ? Number(cdrRef) : undefined,
-    beneficiary: latest.args.beneficiary?.toLowerCase(),
-    guardians: guardians.map((guardian) => guardian.toLowerCase()),
-    threshold: latest.args.threshold ?? 2,
-    heartbeatValue: heartbeat.value,
-    heartbeatUnit: heartbeat.unit,
-    unlockDelayValue: unlockDelay.value,
-    unlockDelayUnit: unlockDelay.unit,
-    createdAt: latest.blockNumber.toString(),
-  };
+    if (role === "guardian") {
+      const isConnectedGuardian = await publicClient.readContract({
+        address: clavisAddress,
+        abi: clavisAbi,
+        functionName: "isGuardian",
+        args: [vaultId, account],
+      });
+      if (!isConnectedGuardian) continue;
+    }
+
+    return buildStoredVaultFromCreatedEvent(publicClient, event);
+  }
+
+  return null;
 }
 
 export async function checkRecoveryRole(input: {

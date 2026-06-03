@@ -4,7 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { friendlyError } from "../components/friendlyErrors";
 import { FriendlyNotice } from "../components/FriendlyNotice";
-import { approveRecoveryOnChain, checkRecoveryRole } from "../create-vault/cdrBrowser";
+import { approveRecoveryOnChain, checkRecoveryRole, loadLatestRecoveryVaultForConnectedWallet } from "../create-vault/cdrBrowser";
 
 function friendlyApprovalError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -31,6 +31,38 @@ export function GuardianApproval() {
   const [submitting, setSubmitting] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [roleStatus, setRoleStatus] = useState("Enter a vault ID to check guardian access.");
+  const [autoLoading, setAutoLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGuardianVault() {
+      setAutoLoading(true);
+      try {
+        const vault = await loadLatestRecoveryVaultForConnectedWallet("guardian");
+        if (cancelled) return;
+        if (vault?.vaultId) {
+          setVaultId(vault.vaultId);
+          setRoleStatus(`Loaded Vault #${vault.vaultId} for the connected guardian wallet.`);
+        } else {
+          setRoleStatus("No guardian vault found for the connected wallet.");
+        }
+      } catch {
+        if (!cancelled) setRoleStatus("Connect a guardian wallet to auto-load its vault.");
+      } finally {
+        if (!cancelled) setAutoLoading(false);
+      }
+    }
+
+    void loadGuardianVault();
+    const handleWalletChange = () => void loadGuardianVault();
+    window.addEventListener("clavis-wallet-change", handleWalletChange);
+    window.ethereum?.on?.("accountsChanged", handleWalletChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("clavis-wallet-change", handleWalletChange);
+      window.ethereum?.removeListener?.("accountsChanged", handleWalletChange);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +92,11 @@ export function GuardianApproval() {
     <div className="action-stack">
       <label>
         Vault ID
-        <input value={vaultId} onChange={(event) => setVaultId(event.target.value)} />
+        <input
+          value={vaultId}
+          placeholder={autoLoading ? "Looking for your vault..." : "Connect guardian wallet or enter vault ID"}
+          onChange={(event) => setVaultId(event.target.value)}
+        />
       </label>
       <button
         className="primary-action"

@@ -4,7 +4,12 @@ import { KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { friendlyError } from "../components/friendlyErrors";
 import { FriendlyNotice } from "../components/FriendlyNotice";
-import { checkRecoveryRole, loadRecoveryReadiness, requestRecoveryOnChain } from "../create-vault/cdrBrowser";
+import {
+  checkRecoveryRole,
+  loadLatestRecoveryVaultForConnectedWallet,
+  loadRecoveryReadiness,
+  requestRecoveryOnChain,
+} from "../create-vault/cdrBrowser";
 
 type Readiness = Awaited<ReturnType<typeof loadRecoveryReadiness>>;
 
@@ -27,6 +32,38 @@ export function RecoveryRequest() {
   const [roleStatus, setRoleStatus] = useState("Enter a vault ID to check beneficiary access.");
   const [requested, setRequested] = useState(false);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [autoLoading, setAutoLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBeneficiaryVault() {
+      setAutoLoading(true);
+      try {
+        const vault = await loadLatestRecoveryVaultForConnectedWallet("beneficiary");
+        if (cancelled) return;
+        if (vault?.vaultId) {
+          setVaultId(vault.vaultId);
+          setRoleStatus(`Loaded Vault #${vault.vaultId} for the connected beneficiary wallet.`);
+        } else {
+          setRoleStatus("No beneficiary vault found for the connected wallet.");
+        }
+      } catch {
+        if (!cancelled) setRoleStatus("Connect the beneficiary wallet to auto-load its vault.");
+      } finally {
+        if (!cancelled) setAutoLoading(false);
+      }
+    }
+
+    void loadBeneficiaryVault();
+    const handleWalletChange = () => void loadBeneficiaryVault();
+    window.addEventListener("clavis-wallet-change", handleWalletChange);
+    window.ethereum?.on?.("accountsChanged", handleWalletChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("clavis-wallet-change", handleWalletChange);
+      window.ethereum?.removeListener?.("accountsChanged", handleWalletChange);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +119,11 @@ export function RecoveryRequest() {
     <div className="action-stack">
       <label>
         Vault ID
-        <input value={vaultId} onChange={(event) => setVaultId(event.target.value)} />
+        <input
+          value={vaultId}
+          placeholder={autoLoading ? "Looking for your vault..." : "Connect beneficiary wallet or enter vault ID"}
+          onChange={(event) => setVaultId(event.target.value)}
+        />
       </label>
       {readiness ? (
         <div className={`readiness-card ${readiness.expired ? "ready" : ""}`}>
