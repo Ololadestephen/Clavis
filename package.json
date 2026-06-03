@@ -1,0 +1,23 @@
+{
+  "name": "clavis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cdr:demo": "tsx scripts/cdr-demo.ts",
+    "cdr:advanced": "tsx scripts/cdr-advanced-demo.ts",
+    "cdr:file": "tsx scripts/cdr-file-demo.ts",
+    "cdr:deploy": "tsx scripts/deploy-clavis.ts"
+  },
+  "dependencies": {
+    "@piplabs/cdr-sdk": "^0.2.1",
+    "dotenv": "^16.4.7",
+    "multiformats": "^13.4.2",
+    "tsx": "^4.19.2",
+    "viem": "^2.21.55"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^5.7.2"
+  }
+}
