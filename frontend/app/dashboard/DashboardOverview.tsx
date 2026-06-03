@@ -14,6 +14,7 @@ import {
 } from "../create-vault/cdrBrowser";
 
 type Progress = Awaited<ReturnType<typeof loadRecoveryProgress>>;
+const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://clavis-rust.vercel.app";
 
 function formatAccount(value?: string) {
   if (!value) return "Not set";
@@ -35,6 +36,7 @@ export function DashboardOverview() {
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [walletChecked, setWalletChecked] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +89,18 @@ export function DashboardOverview() {
       cancelled = true;
     };
   }, [vault?.vaultId, txHash]);
+
+  async function copyInvite(kind: "beneficiary" | "guardian" | "unlock") {
+    if (!vault?.vaultId) return;
+    const messages = {
+      beneficiary: `You've been named as the beneficiary for a Clavis recovery vault.\n\nVault ID: ${vault.vaultId}\nRequest recovery here: ${appUrl}/beneficiary`,
+      guardian: `You've been named as a guardian for a Clavis recovery vault.\n\nVault ID: ${vault.vaultId}\nApprove recovery here after the beneficiary starts recovery: ${appUrl}/guardian`,
+      unlock: `Clavis recovery vault access details:\n\nVault ID: ${vault.vaultId}\nCDR UUID: ${vault.uuid ?? "pending"}\nUnlock page: ${appUrl}/unlock`,
+    };
+    await navigator.clipboard.writeText(messages[kind]);
+    setCopiedInvite(kind);
+    window.setTimeout(() => setCopiedInvite(""), 2500);
+  }
 
   let content;
 
@@ -182,6 +196,28 @@ export function DashboardOverview() {
           </p>
         </article>
       </div>
+      <section className="app-card invite-panel dashboard-invite-panel">
+        <span className="card-label">Invite copy</span>
+        <h2>Send the right link to each person.</h2>
+        <p>Share the vault ID with your beneficiary and guardians. They still need their own wallet role to act.</p>
+        <div className="invite-facts">
+          <span>Vault ID</span>
+          <strong>{vault.vaultId}</strong>
+          <span>CDR UUID</span>
+          <strong>{vault.uuid ?? "pending"}</strong>
+        </div>
+        <div className="invite-actions">
+          <button className="ghost-action" type="button" onClick={() => copyInvite("beneficiary")}>
+            {copiedInvite === "beneficiary" ? "Copied beneficiary invite" : "Copy beneficiary invite"}
+          </button>
+          <button className="ghost-action" type="button" onClick={() => copyInvite("guardian")}>
+            {copiedInvite === "guardian" ? "Copied guardian invite" : "Copy guardian approval link"}
+          </button>
+          <button className="ghost-action" type="button" onClick={() => copyInvite("unlock")}>
+            {copiedInvite === "unlock" ? "Copied unlock details" : "Copy unlock details"}
+          </button>
+        </div>
+      </section>
       {progress?.requested ? (
         <section className="app-card recovery-owner-card">
           <div>

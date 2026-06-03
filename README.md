@@ -1,77 +1,249 @@
 # Clavis
 
-Clavis is a programmable private recovery vault for CDR-backed secrets.
+Clavis is a programmable private recovery vault for digital secrets and files. It uses CDR to keep private data sealed, while a Story Aeneid smart contract decides when a beneficiary is allowed to unlock it.
 
-The secret lives in a CDR vault. The smart contract stores the recovery rules and exposes `canRead(vaultId, reader)`, which the CDR layer or a backend proxy can call before releasing private data.
+Live app: https://clavis-rust.vercel.app/
 
-## Backend Demo Path
+## Why Clavis Exists
 
-1. Owner creates a vault with a beneficiary, three guardians, a `2 of 3` threshold, and an optional unlock delay.
-2. Beneficiary tries to read before recovery starts. `canRead` returns `false`.
-3. Beneficiary requests recovery.
-4. First guardian approves. `canRead` still returns `false`.
-5. Second guardian approves. If the unlock delay has passed, `canRead` returns `true`.
-6. Owner can cancel a pending recovery, making `canRead` return `false` again.
+Wallets, private keys, recovery notes, legal instructions, and important files are often either too exposed or impossible for trusted people to recover when something happens. Clavis creates a recovery plan with programmable rules:
 
-## Contract API
+1. The owner seals a private note or encrypted file.
+2. The owner names one beneficiary and three guardians.
+3. The owner sets proof-of-life duration, guardian threshold, and final delay.
+4. The beneficiary can request recovery only after the owner becomes inactive.
+5. Guardians approve the request.
+6. CDR releases the private payload only when the contract condition passes.
 
-- `createVault(beneficiary, guardians, threshold, unlockDelay, heartbeatTimeout, cdrRef)`
-- `requestRecovery(vaultId)`
-- `approveRecovery(vaultId)`
-- `cancelRecovery(vaultId)`
-- `heartbeat(vaultId)`
-- `canRead(vaultId, reader)`
-- `setCdrRef(vaultId, cdrRef)`
+## Hackathon Tracks
 
-## CDR Integration Boundary
+Clavis is strongest for the Technical Implementation track:
 
-Use the contract as the read gate:
+- Advanced read/write conditions through CDR custom conditions.
+- Multi-step access flow: request recovery, guardian approvals, final delay, unlock.
+- Multi-sig-style guardian threshold.
+- Time-based proof-of-life recovery.
+- Smart-contract enforced conditional access.
+- Trustless private data release using CDR vaults.
+
+It also has an end-to-end application flow suitable for product judging:
+
+- Owner dashboard.
+- Vault creation for notes and files.
+- Beneficiary recovery page.
+- Guardian approval page.
+- CDR unlock page.
+- Share/invite copy for beneficiary and guardian flows.
+
+## Deployed Contract
+
+Network: Story Aeneid testnet
+
+ClavisVault:
 
 ```text
-CDR read request
-  -> wallet/address is resolved as reader
-  -> call ClavisVault.canRead(vaultId, reader)
-  -> release private payload only when true
+0xc1240de35b015acca30b2d9d58e66ac4ab811bb9
 ```
 
-If the CDR SDK returns its vault identifier after contract creation, call `setCdrRef` to attach it to the vault record.
+Deploy transaction:
 
-## Commands
-
-```sh
-make test
+```text
+0xf80d36657857537fc79d5cfde9562cd69f4d227ee0966573700c2a4ce921bf55
 ```
 
-Direct Foundry command:
+## How The Recovery Rule Works
 
-```sh
-forge test --offline
+The owner always retains access. The beneficiary can read only when all required conditions pass:
+
+- Recovery has been requested.
+- Recovery has not been cancelled.
+- Guardian approval count meets the configured threshold.
+- The final delay has elapsed.
+- The owner proof-of-life window has expired.
+
+The read gate lives in `src/ClavisVault.sol`:
+
+```solidity
+canRead(uint256 vaultId, address reader)
 ```
 
-## Current Backend Scope
+CDR calls the contract through:
 
-- `src/ClavisVault.sol` is the source of truth for dynamic permissioning.
-- `backend/clavisGateway.ts` defines the frontend/CDR integration boundary.
-- `test/ClavisVault.t.sol` verifies the recovery and denial paths.
+```solidity
+checkReadCondition(...)
+checkWriteCondition(...)
+```
 
-## Actual CDR Flow
+The CDR condition data is `abi.encode(vaultId)`, so each encrypted CDR vault is linked to the exact on-chain recovery rule.
 
-CDR custom conditions call `checkReadCondition` / `checkWriteCondition`. `ClavisVault` implements both, and the CDR vault stores `abi.encode(vaultId)` as its condition data.
+## File Storage Model
 
-Run the live flow on Story Aeneid:
+Small notes are encrypted and written directly to CDR.
+
+Files are handled differently because CDR payload size is limited on the current testnet:
+
+1. The browser encrypts the file with AES-GCM.
+2. The encrypted file is uploaded to IPFS through Pinata.
+3. CDR stores the file metadata, CID, gateway URL, AES key, and IV.
+4. The beneficiary can recover and decrypt the file only after CDR access succeeds.
+
+This still uses CDR for the sensitive unlock material. IPFS only stores encrypted bytes.
+
+## User Flow
+
+Owner:
+
+1. Connect wallet.
+2. Create vault.
+3. Add beneficiary and guardians.
+4. Set threshold, proof-of-life duration, and final delay.
+5. Seal the note or encrypted file.
+6. Copy the beneficiary and guardian invite messages.
+7. Send heartbeat periodically.
+8. Cancel recovery if they return while recovery is active.
+
+Beneficiary:
+
+1. Open the recovery page.
+2. Enter vault ID.
+3. Connect beneficiary wallet.
+4. Request recovery once proof-of-life has expired.
+5. Open unlock page after guardian approvals and final delay.
+
+Guardian:
+
+1. Open guardian approval page.
+2. Enter vault ID.
+3. Connect guardian wallet.
+4. Approve recovery after the beneficiary has requested it.
+
+## Tech Stack
+
+- Next.js App Router
+- TypeScript
+- Story Aeneid
+- Solidity / Foundry
+- CDR SDK
+- Viem
+- IPFS via Pinata
+- Vercel Analytics
+
+## Repository Structure
+
+```text
+src/ClavisVault.sol              Smart contract permission engine
+test/ClavisVault.t.sol           Foundry tests
+scripts/deploy-clavis.ts         Contract deployment script
+scripts/cdr-*.ts                 CDR demo scripts
+frontend/app                     Next.js application
+frontend/app/api/ipfs/upload     Pinata/IPFS upload route
+backend/clavisGateway.ts         Backend/CDR integration boundary notes
+```
+
+## Local Development
+
+Install root dependencies:
 
 ```sh
 npm install
-make test
+```
+
+Install frontend dependencies:
+
+```sh
+cd frontend
+npm install
+```
+
+Run the frontend:
+
+```sh
+cd frontend
+npm run dev
+```
+
+Build the frontend:
+
+```sh
+cd frontend
+npm run build
+```
+
+Run contract tests:
+
+```sh
+forge test
+```
+
+If Foundry on macOS crashes while trying to initialize signature/gas reporting, this command avoids the optional gas report path:
+
+```sh
+FOUNDRY_GAS_REPORTS='[]' forge test
+```
+
+## Environment Variables
+
+Root `.env` for scripts:
+
+```text
+RPC_URL=https://aeneid.storyrpc.io
+STORY_API_URL=http://172.192.41.96:1317
+OWNER_PRIVATE_KEY=
+BENEFICIARY_PRIVATE_KEY=
+GUARDIAN_ONE_PRIVATE_KEY=
+GUARDIAN_TWO_PRIVATE_KEY=
+GUARDIAN_THREE_PRIVATE_KEY=
+CLAVIS_CONTRACT_ADDRESS=0xc1240de35b015acca30b2d9d58e66ac4ab811bb9
+```
+
+Frontend `.env.local`:
+
+```text
+NEXT_PUBLIC_APP_URL=https://clavis-rust.vercel.app
+NEXT_PUBLIC_RPC_URL=https://aeneid.storyrpc.io
+NEXT_PUBLIC_STORY_API_URL=http://172.192.41.96:1317
+NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS=0xc1240de35b015acca30b2d9d58e66ac4ab811bb9
+NEXT_PUBLIC_IPFS_GATEWAY=https://ipfs.io/ipfs
+PINATA_JWT=
+```
+
+`PINATA_API_KEY` and `PINATA_SECRET_API_KEY` can be used instead of `PINATA_JWT`.
+
+## Deploying To Vercel
+
+Import the GitHub repository and use:
+
+```text
+Root Directory: frontend
+Build Command: npm run build
+Framework: Next.js
+```
+
+Add the frontend environment variables in Vercel project settings.
+
+## Useful Scripts
+
+Deploy the contract:
+
+```sh
 npm run cdr:deploy
+```
+
+Run demo flows:
+
+```sh
 npm run cdr:demo
 npm run cdr:advanced
 CLAVIS_FILE_PATH=./recovery-note.pdf npm run cdr:file
 ```
 
-The demo script needs funded Aeneid private keys in `.env`.
+## Current Limitations
 
-`cdr:advanced` uses short defaults for a live Proof-of-Life demo:
+- The demo uses one beneficiary and three guardians per vault.
+- File upload is capped at 1 MB for hackathon reliability.
+- Role pages require users to enter a vault ID manually.
+- The app is on testnet and should not be used for production recovery yet.
 
-- `ADVANCED_HEARTBEAT_TIMEOUT_SECONDS=45`
-- `ADVANCED_UNLOCK_DELAY_SECONDS=30`
+## Submission Summary
+
+Clavis demonstrates programmable private data recovery using CDR, on-chain proof-of-life, guardian threshold approval, final delay, and CDR-gated unlock. It is not just encrypted storage; it is private data governed by dynamic, composable access rules.

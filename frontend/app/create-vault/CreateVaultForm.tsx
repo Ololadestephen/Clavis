@@ -9,9 +9,14 @@ import { activeClavisAddress, sealVaultWithCdr } from "./cdrBrowser";
 
 const maxDirectCdrPayloadBytes = 500;
 const maxFileBytes = 1024 * 1024;
+const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://clavis-rust.vercel.app";
 
 type SecretMode = "note" | "file";
 type DurationUnit = "minutes" | "hours" | "days" | "months" | "years";
+type InviteDetails = {
+  vaultId: string;
+  uuid: number;
+};
 
 function isAddress(value: string) {
   return /^0x[a-fA-F0-9]{40}$/.test(value.trim());
@@ -123,6 +128,8 @@ export function CreateVaultForm() {
   const [txHash, setTxHash] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [invite, setInvite] = useState<InviteDetails | null>(null);
+  const [copiedInvite, setCopiedInvite] = useState("");
 
   const guardians = [guardianOne, guardianTwo, guardianThree].map(cleanAddress).filter(Boolean);
   const fileSize = file ? formatBytes(file.size) : "";
@@ -262,12 +269,25 @@ export function CreateVaultForm() {
       });
 
       setTxHash([result.createHash, result.allocateTxHash, result.writeTxHash, result.setRefHash]);
+      setInvite({ vaultId: result.vaultId.toString(), uuid: result.uuid });
       setStatus(`Vault ${result.vaultId.toString()} sealed with CDR UUID ${result.uuid}.`);
     } catch (sealError) {
       setError(friendlySealError(sealError));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function copyInvite(kind: "beneficiary" | "guardian" | "unlock") {
+    if (!invite) return;
+    const messages = {
+      beneficiary: `You've been named as the beneficiary for a Clavis recovery vault.\n\nVault ID: ${invite.vaultId}\nRequest recovery here: ${appUrl}/beneficiary`,
+      guardian: `You've been named as a guardian for a Clavis recovery vault.\n\nVault ID: ${invite.vaultId}\nApprove recovery here after the beneficiary starts recovery: ${appUrl}/guardian`,
+      unlock: `Clavis recovery vault access details:\n\nVault ID: ${invite.vaultId}\nCDR UUID: ${invite.uuid}\nUnlock page: ${appUrl}/unlock`,
+    };
+    await navigator.clipboard.writeText(messages[kind]);
+    setCopiedInvite(kind);
+    window.setTimeout(() => setCopiedInvite(""), 2500);
   }
 
   return (
@@ -488,6 +508,28 @@ export function CreateVaultForm() {
                 {hash}
               </code>
             ))}
+          </div>
+        ) : null}
+        {invite ? (
+          <div className="invite-panel">
+            <span className="card-label">Share recovery access</span>
+            <h3>Send these to your trusted people.</h3>
+            <p>Share only the vault ID and role link. The secret stays sealed inside CDR.</p>
+            <div className="invite-facts">
+              <span>Vault ID</span>
+              <strong>{invite.vaultId}</strong>
+              <span>CDR UUID</span>
+              <strong>{invite.uuid}</strong>
+            </div>
+            <button className="ghost-action" type="button" onClick={() => copyInvite("beneficiary")}>
+              {copiedInvite === "beneficiary" ? "Copied beneficiary invite" : "Copy beneficiary invite"}
+            </button>
+            <button className="ghost-action" type="button" onClick={() => copyInvite("guardian")}>
+              {copiedInvite === "guardian" ? "Copied guardian invite" : "Copy guardian approval link"}
+            </button>
+            <button className="ghost-action" type="button" onClick={() => copyInvite("unlock")}>
+              {copiedInvite === "unlock" ? "Copied unlock details" : "Copy unlock details"}
+            </button>
           </div>
         ) : null}
         {error ? <p className="field-error">{error}</p> : null}

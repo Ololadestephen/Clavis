@@ -1113,6 +1113,59 @@ h3 {
   gap: 8px;
 }
 
+.invite-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(255, 244, 223, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 244, 223, 0.045);
+}
+
+.invite-panel h2,
+.invite-panel h3,
+.invite-panel p {
+  margin: 0;
+}
+
+.invite-panel h3 {
+  font-size: 17px;
+}
+
+.invite-facts {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 6px 12px;
+  padding: 12px;
+  border: 1px solid rgba(225, 238, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(1, 9, 19, 0.3);
+}
+
+.invite-facts span {
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.invite-facts strong {
+  color: var(--ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-invite-panel {
+  margin-top: 20px;
+}
+
+.invite-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .field-note {
   display: flex;
   gap: 8px;
@@ -1491,6 +1544,10 @@ h3 {
 
   .wide-card {
     display: block;
+  }
+
+  .invite-actions {
+    grid-template-columns: 1fr;
   }
 
   .rule-summary {
