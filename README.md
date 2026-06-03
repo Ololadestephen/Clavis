@@ -15,25 +15,6 @@ Wallets, private keys, recovery notes, legal instructions, and important files a
 5. Guardians approve the request.
 6. CDR releases the private payload only when the contract condition passes.
 
-## Hackathon Tracks
-
-Clavis is strongest for the Technical Implementation track:
-
-- Advanced read/write conditions through CDR custom conditions.
-- Multi-step access flow: request recovery, guardian approvals, final delay, unlock.
-- Multi-sig-style guardian threshold.
-- Time-based proof-of-life recovery.
-- Smart-contract enforced conditional access.
-- Trustless private data release using CDR vaults.
-
-It also has an end-to-end application flow suitable for product judging:
-
-- Owner dashboard.
-- Vault creation for notes and files.
-- Beneficiary recovery page.
-- Guardian approval page.
-- CDR unlock page.
-- Share/invite copy for beneficiary and guardian flows.
 
 ## Deployed Contract
 
@@ -209,17 +190,6 @@ PINATA_JWT=
 
 `PINATA_API_KEY` and `PINATA_SECRET_API_KEY` can be used instead of `PINATA_JWT`.
 
-## Deploying To Vercel
-
-Import the GitHub repository and use:
-
-```text
-Root Directory: frontend
-Build Command: npm run build
-Framework: Next.js
-```
-
-Add the frontend environment variables in Vercel project settings.
 
 ## Useful Scripts
 
@@ -237,12 +207,6 @@ npm run cdr:advanced
 CLAVIS_FILE_PATH=./recovery-note.pdf npm run cdr:file
 ```
 
-## Current Limitations
-
-- The demo uses one beneficiary and three guardians per vault.
-- File upload is capped at 1 MB for hackathon reliability.
-- Role pages require users to enter a vault ID manually.
-- The app is on testnet and should not be used for production recovery yet.
 
 ## Submission Summary
 
