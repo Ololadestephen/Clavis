@@ -139,7 +139,6 @@ export default function Home() {
         </header>
 
         <div className="hero-content">
-          <p className="eyebrow">CDR private recovery vault</p>
           <h1>Clavis</h1>
           <p className="hero-copy">
             A programmable private recovery vault for your digital life.
