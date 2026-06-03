@@ -18,7 +18,7 @@ import {
 import type { Abi, Address, Hex } from "viem";
 
 const clavisAddress = (process.env.NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS ??
-  "0xc1240de35b015acca30b2d9d58e66ac4ab811bb9") as Address;
+  "0x3948d6ac6575526e61f00979124003319d849cd0") as Address;
 export const activeClavisAddress = clavisAddress;
 
 const storyApiUrl = process.env.NEXT_PUBLIC_STORY_API_URL ?? "/api/story";

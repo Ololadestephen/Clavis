@@ -15,6 +15,18 @@ Wallets, private keys, recovery notes, legal instructions, and important files a
 5. Guardians approve the request.
 6. CDR releases the private payload only when the contract condition passes.
 
+## What We Are Solving With CDR
+
+Most recovery tools have an uncomfortable tradeoff: either the secret is stored somewhere a server can eventually see it, or it is encrypted but not programmable. Clavis uses CDR so the private payload can stay sealed while still being controlled by on-chain rules.
+
+CDR matters here because:
+
+- The secret is not exposed to the app, guardians, or beneficiary by default.
+- The smart contract can dynamically decide when access is allowed.
+- Recovery can depend on multiple conditions: owner inactivity, guardian threshold, recovery request, final delay, and no cancellation.
+- Files can live encrypted on IPFS while CDR protects the decryption metadata.
+
+In short, Clavis is not just storing encrypted data. It turns private recovery into a programmable object: CDR holds the private payload, and the Clavis contract decides when it can be released.
 
 ## Deployed Contract
 
@@ -23,13 +35,13 @@ Network: Story Aeneid testnet
 ClavisVault:
 
 ```text
-0xc1240de35b015acca30b2d9d58e66ac4ab811bb9
+0x3948d6ac6575526e61f00979124003319d849cd0
 ```
 
 Deploy transaction:
 
 ```text
-0xf80d36657857537fc79d5cfde9562cd69f4d227ee0966573700c2a4ce921bf55
+0xea9868620547c54fcab5951f6c56a3696dc980a6c5bb65819a95f112dad0dfed
 ```
 
 ## How The Recovery Rule Works
@@ -174,7 +186,7 @@ BENEFICIARY_PRIVATE_KEY=
 GUARDIAN_ONE_PRIVATE_KEY=
 GUARDIAN_TWO_PRIVATE_KEY=
 GUARDIAN_THREE_PRIVATE_KEY=
-CLAVIS_CONTRACT_ADDRESS=0xc1240de35b015acca30b2d9d58e66ac4ab811bb9
+CLAVIS_CONTRACT_ADDRESS=0x3948d6ac6575526e61f00979124003319d849cd0
 ```
 
 Frontend `.env.local`:
@@ -184,7 +196,7 @@ NEXT_PUBLIC_APP_URL=https://clavis-rust.vercel.app
 NEXT_PUBLIC_RPC_URL=https://aeneid.storyrpc.io
 NEXT_PUBLIC_STORY_API_URL=/api/story
 STORY_API_URL=http://172.192.41.96:1317
-NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS=0xc1240de35b015acca30b2d9d58e66ac4ab811bb9
+NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS=0x3948d6ac6575526e61f00979124003319d849cd0
 NEXT_PUBLIC_IPFS_GATEWAY=https://ipfs.io/ipfs
 PINATA_JWT=
 ```
