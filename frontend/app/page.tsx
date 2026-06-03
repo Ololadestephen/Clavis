@@ -141,7 +141,7 @@ export default function Home() {
         <div className="hero-content">
           <h1>Clavis</h1>
           <p className="hero-copy">
-            A programmable private recovery vault for your digital life.
+            Private recovery for the things your wallet can’t afford to lose.
           </p>
         </div>
       </section>
