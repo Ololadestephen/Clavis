@@ -43,6 +43,9 @@ function friendlySealError(error: unknown) {
   if (message.includes("insufficient funds")) {
     return "This wallet does not have enough IP to pay the transaction fee.";
   }
+  if (message.includes("Mixed Content") || message.includes("Failed to fetch") || message.includes("NetworkError")) {
+    return "Clavis could not reach the CDR network from this browser. On Vercel, set NEXT_PUBLIC_STORY_API_URL to /api/story and STORY_API_URL to the CDR Story API endpoint.";
+  }
   if (message.includes("InvalidBeneficiary")) {
     return "The beneficiary wallet is invalid.";
   }

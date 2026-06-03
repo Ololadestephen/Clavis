@@ -182,7 +182,8 @@ Frontend `.env.local`:
 ```text
 NEXT_PUBLIC_APP_URL=https://clavis-rust.vercel.app
 NEXT_PUBLIC_RPC_URL=https://aeneid.storyrpc.io
-NEXT_PUBLIC_STORY_API_URL=http://172.192.41.96:1317
+NEXT_PUBLIC_STORY_API_URL=/api/story
+STORY_API_URL=http://172.192.41.96:1317
 NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS=0xc1240de35b015acca30b2d9d58e66ac4ab811bb9
 NEXT_PUBLIC_IPFS_GATEWAY=https://ipfs.io/ipfs
 PINATA_JWT=

@@ -21,7 +21,7 @@ const clavisAddress = (process.env.NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS ??
   "0xc1240de35b015acca30b2d9d58e66ac4ab811bb9") as Address;
 export const activeClavisAddress = clavisAddress;
 
-const storyApiUrl = process.env.NEXT_PUBLIC_STORY_API_URL ?? "http://172.192.41.96:1317";
+const storyApiUrl = process.env.NEXT_PUBLIC_STORY_API_URL ?? "/api/story";
 const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL ?? "https://aeneid.storyrpc.io";
 
 export const storyAeneid = defineChain({
