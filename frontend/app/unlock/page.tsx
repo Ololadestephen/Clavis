@@ -1,34 +1,39 @@
-import { CheckCircle2, LockOpen } from "lucide-react";
+import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { UnlockCdr } from "./UnlockCdr";
 
 export default function UnlockPage() {
   return (
     <AppShell
-      active="Unlock"
-      eyebrow="Secure access granted"
-      title="Unlock the vault."
-      description="When CDR verifies the Clavis read condition, the recovered secret is shown only here."
+      active="Release"
+      eyebrow="On-Chain Escrow Audit"
+      title="Vault Release & Claim"
+      description="Inspect on-chain release eligibility, guardian approvals, inactivity countdown, and execute payout on BOT Chain."
     >
       <section className="unlock-layout">
         <div className="app-card secret-card">
           <div className="unlock-badge">
-            <LockOpen size={18} /> Waiting for CDR read condition
+            <ShieldCheck size={18} /> Programmable Escrow Release
           </div>
-          <h2>Secret is still sealed</h2>
-          <p>Complete recovery, guardian approval, proof-of-life timeout, and final delay before reading or downloading.</p>
+          <h2>Release Verification</h2>
+          <p>
+            Verify whether guardian approvals, proof-of-life inactivity timeout, and final timelock delays have been
+            satisfied on-chain before executing the beneficiary BOT payout.
+          </p>
           <UnlockCdr />
         </div>
         <div className="app-card timeline-card">
-          <h2>Unlock timeline</h2>
+          <h2>Release Requirements</h2>
           {[
-            "Recovery request",
-            "Guardian approvals",
-            "Proof-of-life timeout",
-            "Final unlock delay",
-            "CDR read",
+            "1. Owner inactivity timeout expires",
+            "2. Beneficiary initiates recovery request",
+            "3. Multi-guardian threshold approval",
+            "4. Final timelock delay passes",
+            "5. Direct on-chain native BOT transfer",
           ].map((item) => (
-            <p key={item}><CheckCircle2 size={16} /> {item}</p>
+            <p key={item}>
+              <CheckCircle2 size={16} /> {item}
+            </p>
           ))}
         </div>
       </section>

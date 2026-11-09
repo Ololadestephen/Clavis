@@ -1,11 +1,13 @@
 "use client";
 
-import { KeyRound } from "lucide-react";
+import { Coins, ExternalLink, KeyRound, LockOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { friendlyError } from "../components/friendlyErrors";
 import { FriendlyNotice } from "../components/FriendlyNotice";
 import {
   checkRecoveryRole,
+  claimInheritanceOnChain,
+  explorerUrl,
   loadLatestRecoveryVaultForConnectedWallet,
   loadRecoveryReadiness,
   requestRecoveryOnChain,
@@ -28,6 +30,7 @@ export function RecoveryRequest() {
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [roleStatus, setRoleStatus] = useState("Enter a vault ID to check beneficiary access.");
   const [requested, setRequested] = useState(false);
@@ -45,7 +48,7 @@ export function RecoveryRequest() {
           setVaultId(vault.vaultId);
           setRoleStatus(`Loaded Vault #${vault.vaultId} for the connected beneficiary wallet.`);
         } else {
-          setRoleStatus("No beneficiary vault found for the connected wallet.");
+          setRoleStatus("No beneficiary vault found for the connected wallet on BOT Chain.");
         }
       } catch {
         if (!cancelled) setRoleStatus("Connect the beneficiary wallet to auto-load its vault.");
@@ -78,8 +81,8 @@ export function RecoveryRequest() {
         const result = await checkRecoveryRole({ vaultId: BigInt(vaultId), role: "beneficiary" });
         if (cancelled) return;
         setAllowed(result.allowed);
-        setRequested(result.reason.includes("already been requested"));
-        setRoleStatus(result.allowed ? "Beneficiary wallet connected." : result.reason);
+        setRequested(result.reason.includes("already active"));
+        setRoleStatus(result.allowed ? "Beneficiary wallet verified." : result.reason);
       } catch {
         if (!cancelled) setRoleStatus("Could not verify beneficiary access for this vault.");
       }
@@ -106,14 +109,21 @@ export function RecoveryRequest() {
       }
     }
     void checkReadiness();
-    const timer = window.setInterval(checkReadiness, 30_000);
+    const timer = window.setInterval(checkReadiness, 15_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [vaultId, status]);
 
-  const recoveryReady = readiness?.expired || readiness?.recoveryRequested;
+  const recoveryReadyToRequest = readiness?.expired && !readiness?.recoveryRequested && !readiness?.released;
+  const canExecuteClaim =
+    readiness?.recoveryRequested &&
+    readiness.approvalCount >= readiness.threshold &&
+    readiness.delayElapsed &&
+    readiness.expired &&
+    !readiness.released &&
+    Number(readiness.balanceEther) > 0;
 
   return (
     <div className="action-stack">
@@ -125,64 +135,135 @@ export function RecoveryRequest() {
           onChange={(event) => setVaultId(event.target.value)}
         />
       </label>
+
       {readiness ? (
         <div className={`readiness-card ${readiness.expired ? "ready" : ""}`}>
-          <span className="card-label">Recovery readiness</span>
+          <span className="card-label">Inheritance Escrow Status</span>
           <h3>
-            {readiness.recoveryRequested
-              ? "Recovery already requested"
-              : readiness.expired
-                ? "Proof-of-life expired"
-                : "Owner still active"}
+            {readiness.released
+              ? "Vault Already Released (Terminal)"
+              : readiness.recoveryRequested
+                ? `Recovery Active (Request #${readiness.currentRequestId})`
+                : readiness.expired
+                  ? "Proof-of-Life Expired — Ready to Request"
+                  : "Owner Still Active"}
           </h3>
           <p>
-            {readiness.recoveryRequested
-              ? `${readiness.approvalCount} of ${readiness.threshold} guardian approvals collected.`
-              : readiness.expired
-                ? "The beneficiary can request recovery now."
-                : `Recovery opens in ${formatCountdown(readiness.secondsRemaining)} if no heartbeat is sent.`}
+            {readiness.released
+              ? "All credited funds have already been claimed and paid out."
+              : readiness.recoveryRequested
+                ? `${readiness.approvalCount} of ${readiness.threshold} guardian approvals recorded. ${
+                    readiness.delayElapsed
+                      ? "Timelock delay elapsed."
+                      : `Timelock delay ends in ${formatCountdown(readiness.delaySecondsRemaining)}.`
+                  }`
+                : readiness.expired
+                  ? "Owner has been inactive longer than the configured timeout. Beneficiary can request recovery."
+                  : `Recovery opens in ${formatCountdown(readiness.secondsRemaining)} if owner sends no heartbeat.`}
           </p>
+          <div style={{ marginTop: "0.5rem", fontWeight: "bold" }}>
+            Credited Escrow Balance: {readiness.balanceEther} BOT
+          </div>
         </div>
       ) : null}
-      <button
-        className="primary-action"
-        type="button"
-        disabled={submitting || !allowed || requested || !recoveryReady}
-        onClick={async () => {
-          setError("");
-          setStatus("");
-          setTxHash("");
-          if (!vaultId.trim()) {
-            setError("Enter a vault ID.");
-            return;
-          }
-          setSubmitting(true);
-          try {
-            const hash = await requestRecoveryOnChain({
-              vaultId: BigInt(vaultId),
-              onStatus: setStatus,
-            });
-            setTxHash(hash);
-            setRequested(true);
-            setAllowed(false);
-            setStatus("Recovery requested. Guardians can now approve.");
-          } catch (requestError) {
-            setError(friendlyError(requestError, "Could not request recovery."));
-          } finally {
-            setSubmitting(false);
-          }
-        }}
-      >
-        <KeyRound size={16} />
-        {submitting ? "Requesting..." : "Request Recovery"}
-      </button>
-      <p className={allowed && recoveryReady ? "field-success" : "field-note"}>
-        {!recoveryReady && allowed ? "Recovery is not open yet. Wait for proof-of-life to expire." : roleStatus}
-      </p>
-      {status || txHash ? (
-        <FriendlyNotice kind={submitting ? "loading" : "success"} title={submitting ? "Working on it" : "Recovery requested"} message={status} txHash={txHash} />
+
+      {/* Button to Request Recovery */}
+      {!requested && !readiness?.released ? (
+        <button
+          className="primary-action"
+          type="button"
+          disabled={submitting || !allowed || !recoveryReadyToRequest}
+          onClick={async () => {
+            setError("");
+            setStatus("");
+            setTxHash("");
+            if (!vaultId.trim()) {
+              setError("Enter a vault ID.");
+              return;
+            }
+            setSubmitting(true);
+            try {
+              const hash = await requestRecoveryOnChain({
+                vaultId: BigInt(vaultId),
+                onStatus: setStatus,
+              });
+              setTxHash(hash);
+              setRequested(true);
+              setStatus("Recovery requested on BOT Chain. Guardians can now review and approve.");
+            } catch (requestError) {
+              setError(friendlyError(requestError, "Could not request recovery."));
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        >
+          <KeyRound size={16} />
+          {submitting ? "Requesting..." : "Request Recovery"}
+        </button>
       ) : null}
-      {error ? <FriendlyNotice kind="error" title="Recovery request failed" message={error} /> : null}
+
+      {/* Button to Claim Inheritance (when all conditions pass) */}
+      {requested && !readiness?.released ? (
+        <button
+          className="primary-action"
+          type="button"
+          style={{ backgroundColor: canExecuteClaim ? "var(--accent)" : undefined }}
+          disabled={claiming || !allowed || !canExecuteClaim}
+          onClick={async () => {
+            setError("");
+            setStatus("");
+            setTxHash("");
+            setClaiming(true);
+            try {
+              const hash = await claimInheritanceOnChain({
+                vaultId: BigInt(vaultId),
+                onStatus: setStatus,
+              });
+              setTxHash(hash);
+              setStatus(`Inheritance claimed! ${readiness?.balanceEther ?? ""} BOT transferred to your wallet.`);
+            } catch (claimErr) {
+              setError(friendlyError(claimErr, "Inheritance claim failed."));
+            } finally {
+              setClaiming(false);
+            }
+          }}
+        >
+          <Coins size={16} />
+          {claiming ? "Claiming..." : `Claim Inheritance (${readiness?.balanceEther ?? "0"} BOT)`}
+        </button>
+      ) : null}
+
+      <p className={allowed && (recoveryReadyToRequest || canExecuteClaim) ? "field-success" : "field-note"}>
+        {!recoveryReadyToRequest && !requested && allowed
+          ? "Recovery is not open yet. Wait for owner inactivity timeout to expire."
+          : requested && !canExecuteClaim && allowed
+            ? "Recovery active. Waiting for guardian threshold and final delay before claim unlocks."
+            : roleStatus}
+      </p>
+
+      {status || txHash ? (
+        <FriendlyNotice
+          kind={submitting || claiming ? "loading" : "success"}
+          title={submitting ? "Submitting request" : claiming ? "Executing claim" : "Transaction Confirmed"}
+          message={status}
+          txHash={txHash}
+        />
+      ) : null}
+
+      {txHash ? (
+        <p style={{ textAlign: "center", marginTop: "0.5rem" }}>
+          <a
+            href={`${explorerUrl}/tx/${txHash}`}
+            rel="noopener noreferrer"
+            target="_blank"
+            style={{ color: "var(--accent)", textDecoration: "underline" }}
+          >
+            View transaction on BOT Scan <ExternalLink size={14} style={{ display: "inline" }} />
+          </a>
+        </p>
+      ) : null}
+
+      {error ? <FriendlyNotice kind="error" title="Action Failed" message={error} /> : null}
     </div>
   );
 }

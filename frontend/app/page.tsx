@@ -1,8 +1,10 @@
 import {
+  Coins,
   Check,
+  ExternalLink,
   Fingerprint,
+  HeartPulse,
   KeyRound,
-  LockKeyhole,
   ShieldCheck,
   UsersRound,
 } from "lucide-react";
@@ -11,32 +13,32 @@ import { LandingOpenAppButton } from "./components/LandingOpenAppButton";
 
 const steps = [
   {
-    title: "Seal the secret",
-    body: "Store a seed phrase hint, recovery note, password, private key, or file inside a CDR vault.",
-    icon: LockKeyhole,
+    title: "Escrow native BOT",
+    body: "Deposit native BOT into an isolated smart contract vault. The owner retains full withdrawal and cancellation rights before terminal release.",
+    icon: Coins,
   },
   {
-    title: "Name your people",
-    body: "Choose a beneficiary and trusted guardians. Guardians approve recovery, but never see the secret.",
+    title: "Designate trusted roles",
+    body: "Specify a beneficiary wallet and trusted guardians. Guardians verify owner inactivity, but never custody or control the funds.",
     icon: UsersRound,
   },
   {
-    title: "Define recovery rules",
-    body: "Set proof-of-life timeout, guardian threshold, and final unlock delay.",
+    title: "Define release rules",
+    body: "Set proof-of-life inactivity timeout, guardian consensus threshold, and a final timelock delay.",
     icon: Fingerprint,
   },
   {
-    title: "Unlock only when conditions pass",
-    body: "CDR checks the Clavis contract before releasing private data to the beneficiary.",
+    title: "Programmable on-chain release",
+    body: "When inactivity expires, guardians approve, and delay elapses, the beneficiary executes claim and receives the BOT payout directly.",
     icon: ShieldCheck,
   },
 ];
 
 const proofRows = [
-  "CDR denied read before recovery",
-  "CDR denied after one guardian",
-  "CDR denied while timeout and delay were active",
-  "CDR unlocked after conditions passed",
+  "Isolated per-vault BOT fund custody",
+  "Owner heartbeat invalidates pending requests and resets inactivity",
+  "Guardian approvals bound to request ID; cannot authorize future requests",
+  "Terminal state locks liability and prevents duplicate claims",
 ];
 
 function GrassBlade({
@@ -133,7 +135,7 @@ export default function Home() {
           <nav aria-label="Primary navigation">
             <a href="#how">How</a>
             <a href="#rule">Rule</a>
-            <a href="#proof">Proof</a>
+            <a href="#proof">Security</a>
           </nav>
           <LandingOpenAppButton />
         </header>
@@ -141,7 +143,7 @@ export default function Home() {
         <div className="hero-content">
           <h1>Clavis</h1>
           <p className="hero-copy">
-            Private recovery for the things your wallet can’t afford to lose.
+            Programmable native-BOT inheritance escrow for on-chain digital continuity.
           </p>
         </div>
       </section>
@@ -149,7 +151,7 @@ export default function Home() {
       <section className="section intro-section" id="how">
         <div className="section-heading">
           <p className="eyebrow">How it works</p>
-          <h2>Your secret stays sealed until your rules say otherwise.</h2>
+          <h2>Escrowed native BOT released only when multi-party rules are met.</h2>
         </div>
         <div className="steps-grid">
           {steps.map((step, index) => {
@@ -168,30 +170,37 @@ export default function Home() {
 
       <section className="section split-section" id="rule">
         <div>
-          <p className="eyebrow">The recovery rule</p>
-          <h2>Guardians approve. They never see the secret.</h2>
+          <p className="eyebrow">Multi-Party Consensus</p>
+          <h2>Guardians verify inactivity. Beneficiary claims funds.</h2>
           <p>
-            The frontend does not decide access. CDR checks the Clavis smart
-            contract before releasing private data.
+            The owner retains complete control of their funds through deposits, withdrawals, and heartbeats. If
+            extended inactivity occurs, guardians confirm and approve the release to the designated beneficiary.
+          </p>
+          <p style={{ marginTop: "1rem", fontSize: "0.85rem", color: "var(--muted)" }}>
+            * This is an on-chain programmable asset release mechanism. It does not verify death, create a legal will,
+            or recover external wallets.
           </p>
         </div>
         <aside className="rule-panel" aria-label="Recovery rule preview">
           <div className="panel-header">
             <KeyRound size={18} />
-            <span>Vault rule preview</span>
+            <span>Vault Lifecycle Rules</span>
           </div>
           <ul>
             <li>
-              <Check size={16} /> Owner has not checked in for 30 days
+              <Check size={16} /> Owner inactivity period passes with no heartbeat
             </li>
             <li>
-              <Check size={16} /> 2 of 3 guardians approve
+              <Check size={16} /> Beneficiary initiates recovery request
             </li>
             <li>
-              <Check size={16} /> 24 hour final delay passes
+              <Check size={16} /> Configured threshold of guardians approve the request ID
             </li>
             <li>
-              <Check size={16} /> Owner has not cancelled recovery
+              <Check size={16} /> Final timelock delay elapses
+            </li>
+            <li>
+              <Check size={16} /> Owner has not cancelled or sent a heartbeat
             </li>
           </ul>
         </aside>
@@ -199,8 +208,8 @@ export default function Home() {
 
       <section className="section proof-section" id="proof">
         <div className="proof-copy">
-          <p className="eyebrow">Live CDR proof</p>
-          <h2>Not just an interface. The CDR contract enforced the lock.</h2>
+          <p className="eyebrow">On-Chain Guarantees</p>
+          <h2>Financial isolation, reentrancy guards, and terminal state enforcement.</h2>
         </div>
         <div className="proof-grid">
           {proofRows.map((row) => (
@@ -212,16 +221,51 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section demand-section" id="early-access">
-        <div className="demand-copy">
-          <p className="eyebrow">Built for real recovery plans</p>
-          <h2>Make your recovery plan before you need it.</h2>
-          <p>
-            Clavis is for wallet recovery, family emergency access, team
-            credential recovery, and key-person contingency.
-          </p>
+      <footer
+        style={{
+          padding: "3rem 2rem",
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "1rem",
+          maxWidth: "1100px",
+          margin: "0 auto",
+          fontSize: "0.85rem",
+          color: "var(--muted)",
+        }}
+      >
+        <div>
+          <span>&copy; {new Date().getFullYear()} Clavis &middot; BOT Chain Native Escrow</span>
         </div>
-      </section>
+        <div style={{ display: "flex", gap: "1.5rem" }}>
+          <a
+            href="https://www.botchain.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+          >
+            BOT Chain <ExternalLink size={13} />
+          </a>
+          <a
+            href="https://scan.botchain.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+          >
+            BOT Scan Explorer <ExternalLink size={13} />
+          </a>
+          <a
+            href="https://dev-docs.botchain.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+          >
+            Developer Docs <ExternalLink size={13} />
+          </a>
+        </div>
+      </footer>
     </main>
   );
 }

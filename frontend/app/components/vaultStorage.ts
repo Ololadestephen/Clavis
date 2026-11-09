@@ -6,13 +6,15 @@ export type StoredVault = {
   uuid?: number;
   txHashes?: {
     create?: string;
-    allocate?: string;
-    write?: string;
-    setRef?: string;
+    deposit?: string;
+    withdraw?: string;
+    heartbeat?: string;
   };
   beneficiary?: string;
   guardians?: string[];
   threshold?: number;
+  balance?: string;
+  status?: "Active" | "Released" | "NonExistent";
   heartbeatDays?: number;
   unlockDelayHours?: number;
   heartbeatValue?: number;
@@ -20,9 +22,11 @@ export type StoredVault = {
   unlockDelayValue?: number;
   unlockDelayUnit?: string;
   createdAt?: string;
+  lastHeartbeatAt?: string;
 };
 
 export function getLastCreatedVault(contractAddress?: string): StoredVault | null {
+  if (typeof window === "undefined") return null;
   const raw = localStorage.getItem("clavis:last-created-vault");
   if (!raw) return null;
   try {
@@ -41,5 +45,6 @@ export function getLastCreatedVault(contractAddress?: string): StoredVault | nul
 }
 
 export function saveLastCreatedVault(vault: StoredVault) {
+  if (typeof window === "undefined") return;
   localStorage.setItem("clavis:last-created-vault", JSON.stringify(vault));
 }

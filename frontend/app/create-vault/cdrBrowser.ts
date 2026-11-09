@@ -1,307 +1,107 @@
 "use client";
 
-import { initWasm } from "@piplabs/cdr-crypto";
-import { Observer } from "@piplabs/cdr-sdk/dist/observer.js";
-import { Uploader } from "@piplabs/cdr-sdk/dist/uploader.js";
-import { Consumer } from "@piplabs/cdr-sdk/dist/consumer.js";
-import { uuidToLabel } from "@piplabs/cdr-sdk/dist/label.js";
 import {
   createPublicClient,
   createWalletClient,
   custom,
   defineChain,
-  encodeAbiParameters,
+  formatEther,
   http,
+  parseEther,
   parseEventLogs,
-  toHex,
 } from "viem";
-import type { Abi, Address, Hex } from "viem";
+import type { Address, Hex } from "viem";
+import { clavisAbi } from "../lib/clavisAbi";
+import {
+  BOTCHAIN_MAINNET_CHAIN_ID,
+  BOTCHAIN_MAINNET_CHAIN_ID_HEX,
+  BOTCHAIN_MAINNET_EXPLORER,
+  BOTCHAIN_MAINNET_NAME,
+  BOTCHAIN_MAINNET_RPC,
+  switchNetworkToBotChainMainnet,
+} from "../components/wallet";
 
-const clavisAddress = (process.env.NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS ??
-  "0x3948d6ac6575526e61f00979124003319d849cd0") as Address;
-export const activeClavisAddress = clavisAddress;
+// BOT Chain Mainnet Configuration
+export const configuredChainId = BOTCHAIN_MAINNET_CHAIN_ID;
+export const rpcUrl = BOTCHAIN_MAINNET_RPC;
+export const explorerUrl = BOTCHAIN_MAINNET_EXPLORER;
+export const networkName = BOTCHAIN_MAINNET_NAME;
 
-const storyApiUrl = process.env.NEXT_PUBLIC_STORY_API_URL ?? "/api/story";
-const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL ?? "https://aeneid.storyrpc.io";
-
-export const storyAeneid = defineChain({
-  id: 1315,
-  name: "Story Aeneid",
+export const botChain = defineChain({
+  id: BOTCHAIN_MAINNET_CHAIN_ID,
+  name: BOTCHAIN_MAINNET_NAME,
   nativeCurrency: {
     decimals: 18,
-    name: "IP",
-    symbol: "IP",
+    name: "BOT",
+    symbol: "BOT",
   },
   rpcUrls: {
     default: {
-      http: [rpcUrl],
+      http: [BOTCHAIN_MAINNET_RPC],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "BOT Scan",
+      url: BOTCHAIN_MAINNET_EXPLORER,
     },
   },
 });
 
-const clavisAbi = [
-  {
-    type: "function",
-    name: "createVault",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "beneficiary", type: "address" },
-      { name: "guardians", type: "address[]" },
-      { name: "threshold", type: "uint16" },
-      { name: "unlockDelay", type: "uint40" },
-      { name: "heartbeatTimeout", type: "uint40" },
-      { name: "cdrRef", type: "string" },
-    ],
-    outputs: [{ name: "vaultId", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "setCdrRef",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "vaultId", type: "uint256" },
-      { name: "cdrRef", type: "string" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "requestRecovery",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "vaultId", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "approveRecovery",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "vaultId", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "cancelRecovery",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "vaultId", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "heartbeat",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "vaultId", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "event",
-    name: "RecoveryCancelled",
-    inputs: [
-      { name: "vaultId", type: "uint256", indexed: true },
-      { name: "owner", type: "address", indexed: true },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "function",
-    name: "canRead",
-    stateMutability: "view",
-    inputs: [
-      { name: "vaultId", type: "uint256" },
-      { name: "reader", type: "address" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    type: "function",
-    name: "getVault",
-    stateMutability: "view",
-    inputs: [{ name: "vaultId", type: "uint256" }],
-    outputs: [
-      {
-        name: "",
-        type: "tuple",
-        components: [
-          { name: "owner", type: "address" },
-          { name: "beneficiary", type: "address" },
-          { name: "threshold", type: "uint16" },
-          { name: "unlockDelay", type: "uint40" },
-          { name: "heartbeatTimeout", type: "uint40" },
-          { name: "createdAt", type: "uint40" },
-          { name: "lastHeartbeatAt", type: "uint40" },
-          { name: "active", type: "bool" },
-          { name: "cdrRef", type: "string" },
-        ],
-      },
-    ],
-  },
-  {
-    type: "function",
-    name: "getGuardians",
-    stateMutability: "view",
-    inputs: [{ name: "vaultId", type: "uint256" }],
-    outputs: [{ name: "", type: "address[]" }],
-  },
-  {
-    type: "function",
-    name: "getRecovery",
-    stateMutability: "view",
-    inputs: [{ name: "vaultId", type: "uint256" }],
-    outputs: [
-      {
-        name: "",
-        type: "tuple",
-        components: [
-          { name: "requested", type: "bool" },
-          { name: "cancelled", type: "bool" },
-          { name: "requestedAt", type: "uint40" },
-          { name: "approvalCount", type: "uint16" },
-        ],
-      },
-    ],
-  },
-  {
-    type: "function",
-    name: "isGuardian",
-    stateMutability: "view",
-    inputs: [
-      { name: "vaultId", type: "uint256" },
-      { name: "guardian", type: "address" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    type: "function",
-    name: "hasApproved",
-    stateMutability: "view",
-    inputs: [
-      { name: "vaultId", type: "uint256" },
-      { name: "guardian", type: "address" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    type: "event",
-    name: "VaultCreated",
-    inputs: [
-      { name: "vaultId", type: "uint256", indexed: true },
-      { name: "owner", type: "address", indexed: true },
-      { name: "beneficiary", type: "address", indexed: true },
-      { name: "threshold", type: "uint16", indexed: false },
-      { name: "unlockDelay", type: "uint40", indexed: false },
-      { name: "heartbeatTimeout", type: "uint40", indexed: false },
-      { name: "cdrRef", type: "string", indexed: false },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "event",
-    name: "CdrRefUpdated",
-    inputs: [
-      { name: "vaultId", type: "uint256", indexed: true },
-      { name: "cdrRef", type: "string", indexed: false },
-    ],
-    anonymous: false,
-  },
-] as const satisfies Abi;
+// Alias for backwards compatibility
+export const storyAeneid = botChain;
 
-type CdrPayload = {
-  kind: "text" | "file" | "external-file";
-  name?: string;
-  mimeType?: string;
-  cid?: string;
-  keyHex?: string;
-  ivHex?: string;
-  gatewayUrl?: string;
-  encryptedSize?: number;
-  originalSize?: number;
-  bytes: Uint8Array;
-};
+export const clavisAddress = (process.env.NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS ||
+  "0x0000000000000000000000000000000000000000") as Address;
+export const activeClavisAddress = clavisAddress;
 
-type VaultCreatedEvent = {
-  args: {
-    vaultId?: bigint;
-    beneficiary?: Address;
-    threshold?: number;
-    unlockDelay?: number;
-    heartbeatTimeout?: number;
-    cdrRef?: string;
-  };
-  blockNumber: bigint;
-};
+export { clavisAbi };
 
 export type DecodedCdrPayload = {
   metadata: {
     kind: "text" | "file" | "external-file";
     name?: string;
     mimeType?: string;
-    cid?: string;
-    keyHex?: string;
-    ivHex?: string;
-    gatewayUrl?: string;
-    encryptedSize?: number;
-    originalSize?: number;
     size: number;
   };
   bytes: Uint8Array;
 };
 
-function encodePayload(payload: CdrPayload) {
-  const metadata = {
-    kind: payload.kind,
-    name: payload.name,
-    mimeType: payload.mimeType,
-    cid: payload.cid,
-    keyHex: payload.keyHex,
-    ivHex: payload.ivHex,
-    gatewayUrl: payload.gatewayUrl,
-    encryptedSize: payload.encryptedSize,
-    originalSize: payload.originalSize,
-    size: payload.bytes.length,
-  };
-  const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
-  const output = new Uint8Array(4 + metadataBytes.length + payload.bytes.length);
-  new DataView(output.buffer).setUint32(0, metadataBytes.length, false);
-  output.set(metadataBytes, 4);
-  output.set(payload.bytes, 4 + metadataBytes.length);
-  return output;
+export async function ensureBotChain() {
+  await switchNetworkToBotChainMainnet();
 }
 
-export function decodePayload(bytes: Uint8Array): DecodedCdrPayload {
-  const metadataLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, false);
-  const payloadStart = 4 + metadataLength;
-  return {
-    metadata: JSON.parse(new TextDecoder().decode(bytes.slice(4, payloadStart))),
-    bytes: bytes.slice(payloadStart),
-  };
-}
-
-async function getWalletClients(account?: Address) {
-  if (!window.ethereum) throw new Error("No wallet found. Connect MetaMask, Rabby, or OKX Wallet.");
+export async function getWalletClients(account?: Address) {
+  if (typeof window === "undefined" || !window.ethereum) {
+    throw new Error("No injected wallet found. Install MetaMask, Rabby, or OKX Wallet.");
+  }
   const accounts = (await window.ethereum.request({ method: "eth_requestAccounts" })) as Address[];
   const activeAccount = account ?? accounts[0];
   if (!activeAccount) throw new Error("No wallet account returned.");
 
+  // Strictly enforce BOT Chain Mainnet (Chain ID 677)
+  await ensureBotChain();
+
   const publicClient = createPublicClient({
-    chain: storyAeneid,
-    transport: http(rpcUrl),
+    chain: botChain,
+    transport: http(BOTCHAIN_MAINNET_RPC),
   });
   const walletClient = createWalletClient({
     account: activeAccount,
-    chain: storyAeneid,
+    chain: botChain,
     transport: custom(window.ethereum),
   });
 
-  await ensureStoryAeneid(walletClient);
   return { account: activeAccount, publicClient, walletClient };
 }
 
-async function getConnectedAccount() {
-  if (!window.ethereum) return undefined;
+export async function getConnectedAccount(): Promise<Address | undefined> {
+  if (typeof window === "undefined" || !window.ethereum) return undefined;
   const accounts = (await window.ethereum.request({ method: "eth_accounts" })) as Address[];
   return accounts[0];
 }
 
-function secondsToDuration(seconds: number) {
+export function secondsToDuration(seconds: number) {
   const units = [
     ["years", 365 * 24 * 60 * 60],
     ["months", 30 * 24 * 60 * 60],
@@ -317,65 +117,340 @@ function secondsToDuration(seconds: number) {
   return { value: seconds, unit: "seconds" };
 }
 
-async function getCdrRefForVault(
-  publicClient: ReturnType<typeof createPublicClient>,
-  vaultId: bigint,
-  fromBlock: bigint,
-  fallback?: string,
-) {
-  const cdrRefEvents = await publicClient.getContractEvents({
+export async function createVaultOnChain(input: {
+  beneficiary: Address;
+  guardians: Address[];
+  threshold: number;
+  unlockDelaySeconds: number;
+  heartbeatTimeoutSeconds: number;
+  initialDepositEther?: string;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+
+  const depositValue = input.initialDepositEther && Number(input.initialDepositEther) > 0
+    ? parseEther(input.initialDepositEther)
+    : BigInt(0);
+
+  input.onStatus("Submitting createVault transaction to BOT Chain Mainnet...");
+  const hash = await walletClient.writeContract({
     address: clavisAddress,
     abi: clavisAbi,
-    eventName: "CdrRefUpdated",
-    args: { vaultId },
-    fromBlock,
-    toBlock: "latest",
+    functionName: "createVault",
+    args: [
+      input.beneficiary,
+      input.guardians,
+      input.threshold,
+      input.unlockDelaySeconds,
+      input.heartbeatTimeoutSeconds,
+    ],
+    value: depositValue,
+    account,
+    chain: botChain,
   });
 
-  return cdrRefEvents.at(-1)?.args.cdrRef || fallback || "";
+  input.onStatus("Waiting for confirmation on BOT Chain Mainnet...");
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Create vault transaction failed.");
+
+  const logs = parseEventLogs({
+    abi: clavisAbi,
+    eventName: "VaultCreated",
+    logs: receipt.logs,
+  });
+  const vaultId = logs[0]?.args.vaultId;
+  if (vaultId === undefined) throw new Error("Could not find created vault ID in transaction receipt logs.");
+
+  return {
+    vaultId,
+    hash,
+    createHash: hash,
+  };
 }
 
-async function buildStoredVaultFromCreatedEvent(
-  publicClient: ReturnType<typeof createPublicClient>,
-  event: VaultCreatedEvent,
-) {
-  const vaultId = event.args.vaultId;
-  if (vaultId === undefined) return null;
-
-  const guardians = await publicClient.readContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "getGuardians",
-    args: [vaultId],
+// Backwards-compatible alias for createVaultOnChain
+export async function sealVaultWithCdr(input: {
+  account: Address;
+  beneficiary: Address;
+  guardians: Address[];
+  threshold: number;
+  unlockDelaySeconds: number;
+  heartbeatTimeoutSeconds: number;
+  initialDepositEther?: string;
+  payload?: unknown;
+  onStatus: (status: string) => void;
+}) {
+  const result = await createVaultOnChain({
+    beneficiary: input.beneficiary,
+    guardians: input.guardians,
+    threshold: input.threshold,
+    unlockDelaySeconds: input.unlockDelaySeconds,
+    heartbeatTimeoutSeconds: input.heartbeatTimeoutSeconds,
+    initialDepositEther: input.initialDepositEther,
+    onStatus: input.onStatus,
   });
 
-  const cdrRef = await getCdrRefForVault(publicClient, vaultId, event.blockNumber, event.args.cdrRef);
-  const heartbeat = secondsToDuration(Number(event.args.heartbeatTimeout ?? 0));
-  const unlockDelay = secondsToDuration(Number(event.args.unlockDelay ?? 0));
+  return {
+    vaultId: result.vaultId,
+    uuid: Number(result.vaultId),
+    createHash: result.hash,
+    allocateTxHash: result.hash,
+    writeTxHash: result.hash,
+    setRefHash: result.hash,
+  };
+}
+
+export async function depositToVaultOnChain(input: {
+  vaultId: bigint;
+  amountEther: string;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+
+  const value = parseEther(input.amountEther);
+  input.onStatus(`Depositing ${input.amountEther} BOT into Vault #${input.vaultId.toString()}...`);
+  const hash = await walletClient.writeContract({
+    address: clavisAddress,
+    abi: clavisAbi,
+    functionName: "deposit",
+    args: [input.vaultId],
+    value,
+    account,
+    chain: botChain,
+  });
+
+  input.onStatus("Waiting for deposit confirmation on BOT Chain Mainnet...");
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Deposit transaction failed.");
+  return hash;
+}
+
+export async function withdrawFromVaultOnChain(input: {
+  vaultId: bigint;
+  amountEther: string;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+
+  const value = parseEther(input.amountEther);
+  input.onStatus(`Withdrawing ${input.amountEther} BOT from Vault #${input.vaultId.toString()}...`);
+  const hash = await walletClient.writeContract({
+    address: clavisAddress,
+    abi: clavisAbi,
+    functionName: "withdraw",
+    args: [input.vaultId, value],
+    account,
+    chain: botChain,
+  });
+
+  input.onStatus("Waiting for withdrawal confirmation on BOT Chain Mainnet...");
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Withdrawal transaction failed.");
+  return hash;
+}
+
+export async function sendHeartbeatOnChain(input: {
+  vaultId: bigint;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+  input.onStatus("Sending proof-of-life heartbeat to BOT Chain Mainnet...");
+  const hash = await walletClient.writeContract({
+    address: clavisAddress,
+    abi: clavisAbi,
+    functionName: "heartbeat",
+    args: [input.vaultId],
+    account,
+    chain: botChain,
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Heartbeat transaction failed.");
+  return hash;
+}
+
+export async function cancelRecoveryOnChain(input: {
+  vaultId: bigint;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+  input.onStatus("Cancelling recovery request on BOT Chain Mainnet...");
+  const hash = await walletClient.writeContract({
+    address: clavisAddress,
+    abi: clavisAbi,
+    functionName: "cancelRecovery",
+    args: [input.vaultId],
+    account,
+    chain: botChain,
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Cancel recovery transaction failed.");
+  return hash;
+}
+
+export async function requestRecoveryOnChain(input: {
+  vaultId: bigint;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+  input.onStatus("Requesting inheritance recovery on BOT Chain Mainnet...");
+  const hash = await walletClient.writeContract({
+    address: clavisAddress,
+    abi: clavisAbi,
+    functionName: "requestRecovery",
+    args: [input.vaultId],
+    account,
+    chain: botChain,
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Recovery request transaction failed.");
+  return hash;
+}
+
+export async function approveRecoveryOnChain(input: {
+  vaultId: bigint;
+  requestId?: bigint;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+  input.onStatus("Submitting guardian approval on BOT Chain Mainnet...");
+
+  let hash: Hex;
+  if (input.requestId !== undefined) {
+    hash = await walletClient.writeContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "approveRecovery",
+      args: [input.vaultId, input.requestId],
+      account,
+      chain: botChain,
+    });
+  } else {
+    hash = await walletClient.writeContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "approveRecovery",
+      args: [input.vaultId],
+      account,
+      chain: botChain,
+    });
+  }
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Guardian approval transaction failed.");
+  return hash;
+}
+
+export async function claimInheritanceOnChain(input: {
+  vaultId: bigint;
+  requestId?: bigint;
+  onStatus: (status: string) => void;
+}) {
+  input.onStatus("Verifying BOT Chain Mainnet and preparing wallet...");
+  const { publicClient, walletClient, account } = await getWalletClients();
+  input.onStatus("Executing inheritance claim and BOT payout on BOT Chain Mainnet...");
+
+  let hash: Hex;
+  if (input.requestId !== undefined) {
+    hash = await walletClient.writeContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "claim",
+      args: [input.vaultId, input.requestId],
+      account,
+      chain: botChain,
+    });
+  } else {
+    hash = await walletClient.writeContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "claim",
+      args: [input.vaultId],
+      account,
+      chain: botChain,
+    });
+  }
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Inheritance claim transaction failed.");
+  return hash;
+}
+
+export async function loadVaultOnChain(vaultId: bigint) {
+  const publicClient = createPublicClient({
+    chain: botChain,
+    transport: http(BOTCHAIN_MAINNET_RPC),
+  });
+
+  const [vault, recovery, guardians, currentRequestId] = await Promise.all([
+    publicClient.readContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "getVault",
+      args: [vaultId],
+    }),
+    publicClient.readContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "getRecovery",
+      args: [vaultId],
+    }),
+    publicClient.readContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "getGuardians",
+      args: [vaultId],
+    }),
+    publicClient.readContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "vaultCurrentRequestId",
+      args: [vaultId],
+    }),
+  ]);
+
+  const heartbeat = secondsToDuration(Number(vault.heartbeatTimeout));
+  const unlockDelay = secondsToDuration(Number(vault.unlockDelay));
 
   return {
     vaultId: vaultId.toString(),
-    uuid: cdrRef ? Number(cdrRef) : undefined,
-    beneficiary: event.args.beneficiary?.toLowerCase(),
-    guardians: guardians.map((guardian) => guardian.toLowerCase()),
-    threshold: event.args.threshold ?? 2,
+    owner: vault.owner.toLowerCase(),
+    beneficiary: vault.beneficiary.toLowerCase(),
+    guardians: guardians.map((g) => g.toLowerCase()),
+    threshold: Number(vault.threshold),
+    balanceEther: formatEther(vault.balance),
+    status: vault.status === 1 ? ("Active" as const) : vault.status === 2 ? ("Released" as const) : ("NonExistent" as const),
+    heartbeatTimeout: Number(vault.heartbeatTimeout),
+    lastHeartbeatAt: Number(vault.lastHeartbeatAt),
+    createdAt: Number(vault.createdAt),
     heartbeatValue: heartbeat.value,
     heartbeatUnit: heartbeat.unit,
     unlockDelayValue: unlockDelay.value,
     unlockDelayUnit: unlockDelay.unit,
-    createdAt: event.blockNumber.toString(),
+    currentRequestId: currentRequestId.toString(),
+    recovery: {
+      requestId: recovery.requestId.toString(),
+      requestedAt: Number(recovery.requestedAt),
+      approvalCount: Number(recovery.approvalCount),
+      active: recovery.active,
+      cancelled: recovery.cancelled,
+    },
   };
 }
 
 export async function loadLatestOwnerVaultFromChain() {
-  if (!window.ethereum) return null;
-  const accounts = (await window.ethereum.request({ method: "eth_accounts" })) as Address[];
-  const account = accounts[0];
+  const account = await getConnectedAccount();
   if (!account) return null;
 
   const publicClient = createPublicClient({
-    chain: storyAeneid,
-    transport: http(rpcUrl),
+    chain: botChain,
+    transport: http(BOTCHAIN_MAINNET_RPC),
   });
 
   const createdEvents = await publicClient.getContractEvents({
@@ -388,9 +463,23 @@ export async function loadLatestOwnerVaultFromChain() {
   });
 
   const latest = createdEvents.at(-1);
-  if (!latest) return null;
+  if (!latest || latest.args.vaultId === undefined) return null;
 
-  return buildStoredVaultFromCreatedEvent(publicClient, latest);
+  const vault = await loadVaultOnChain(latest.args.vaultId);
+  return {
+    vaultId: vault.vaultId,
+    beneficiary: vault.beneficiary,
+    guardians: vault.guardians,
+    threshold: vault.threshold,
+    balance: vault.balanceEther,
+    status: vault.status,
+    heartbeatValue: vault.heartbeatValue,
+    heartbeatUnit: vault.heartbeatUnit,
+    unlockDelayValue: vault.unlockDelayValue,
+    unlockDelayUnit: vault.unlockDelayUnit,
+    createdAt: vault.createdAt.toString(),
+    lastHeartbeatAt: vault.lastHeartbeatAt.toString(),
+  };
 }
 
 export async function loadLatestRecoveryVaultForConnectedWallet(role: "beneficiary" | "guardian") {
@@ -398,8 +487,8 @@ export async function loadLatestRecoveryVaultForConnectedWallet(role: "beneficia
   if (!account) return null;
 
   const publicClient = createPublicClient({
-    chain: storyAeneid,
-    transport: http(rpcUrl),
+    chain: botChain,
+    transport: http(BOTCHAIN_MAINNET_RPC),
   });
 
   const createdEvents = await publicClient.getContractEvents({
@@ -425,7 +514,19 @@ export async function loadLatestRecoveryVaultForConnectedWallet(role: "beneficia
       if (!isConnectedGuardian) continue;
     }
 
-    return buildStoredVaultFromCreatedEvent(publicClient, event);
+    const vault = await loadVaultOnChain(vaultId);
+    return {
+      vaultId: vault.vaultId,
+      beneficiary: vault.beneficiary,
+      guardians: vault.guardians,
+      threshold: vault.threshold,
+      balance: vault.balanceEther,
+      status: vault.status,
+      heartbeatValue: vault.heartbeatValue,
+      heartbeatUnit: vault.heartbeatUnit,
+      unlockDelayValue: vault.unlockDelayValue,
+      unlockDelayUnit: vault.unlockDelayUnit,
+    };
   }
 
   return null;
@@ -445,8 +546,8 @@ export async function checkRecoveryRole(input: {
   }
 
   const publicClient = createPublicClient({
-    chain: storyAeneid,
-    transport: http(rpcUrl),
+    chain: botChain,
+    transport: http(BOTCHAIN_MAINNET_RPC),
   });
 
   if (input.role === "beneficiary") {
@@ -456,26 +557,31 @@ export async function checkRecoveryRole(input: {
       functionName: "getVault",
       args: [input.vaultId],
     });
-    const allowed = vault.beneficiary.toLowerCase() === account.toLowerCase();
-    if (allowed) {
-      const recovery = await publicClient.readContract({
-        address: clavisAddress,
-        abi: clavisAbi,
-        functionName: "getRecovery",
-        args: [input.vaultId],
-      });
-      if (recovery.requested && !recovery.cancelled) {
-        return {
-          allowed: false,
-          account,
-          reason: "Recovery has already been requested. Guardians can approve now.",
-        };
-      }
+    const isBeneficiary = vault.beneficiary.toLowerCase() === account.toLowerCase();
+    if (!isBeneficiary) {
+      return {
+        allowed: false,
+        account,
+        reason: "Only the named beneficiary can request recovery or claim this vault.",
+      };
+    }
+    const recovery = await publicClient.readContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "getRecovery",
+      args: [input.vaultId],
+    });
+    if (recovery.active && !recovery.cancelled) {
+      return {
+        allowed: false,
+        account,
+        reason: "Recovery is already active for this vault.",
+      };
     }
     return {
-      allowed,
+      allowed: true,
       account,
-      reason: allowed ? "" : "Only the named beneficiary can request recovery for this vault.",
+      reason: "Beneficiary wallet verified.",
     };
   }
 
@@ -499,7 +605,7 @@ export async function checkRecoveryRole(input: {
     functionName: "getRecovery",
     args: [input.vaultId],
   });
-  if (!recovery.requested || recovery.cancelled) {
+  if (!recovery.active || recovery.cancelled) {
     return {
       allowed: false,
       account,
@@ -510,16 +616,16 @@ export async function checkRecoveryRole(input: {
   return {
     allowed: true,
     account,
-    reason: "",
+    reason: "Guardian wallet verified.",
   };
 }
 
 export async function loadRecoveryReadiness(input: { vaultId: bigint }) {
   const publicClient = createPublicClient({
-    chain: storyAeneid,
-    transport: http(rpcUrl),
+    chain: botChain,
+    transport: http(BOTCHAIN_MAINNET_RPC),
   });
-  const [vault, recovery] = await Promise.all([
+  const [vault, recovery, currentRequestId] = await Promise.all([
     publicClient.readContract({
       address: clavisAddress,
       abi: clavisAbi,
@@ -532,30 +638,46 @@ export async function loadRecoveryReadiness(input: { vaultId: bigint }) {
       functionName: "getRecovery",
       args: [input.vaultId],
     }),
+    publicClient.readContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "vaultCurrentRequestId",
+      args: [input.vaultId],
+    }),
   ]);
+
   const lastHeartbeatAt = Number(vault.lastHeartbeatAt);
   const heartbeatTimeout = Number(vault.heartbeatTimeout);
   const inactiveAt = lastHeartbeatAt + heartbeatTimeout;
   const now = Math.floor(Date.now() / 1000);
+  const unlockDelay = Number(vault.unlockDelay);
+  const delayReleaseAt = Number(recovery.requestedAt) + unlockDelay;
+
   return {
-    active: vault.active,
+    active: vault.status === 1,
+    released: vault.status === 2,
+    balanceEther: formatEther(vault.balance),
     heartbeatTimeout,
     lastHeartbeatAt,
     inactiveAt,
     secondsRemaining: Math.max(0, inactiveAt - now),
     expired: heartbeatTimeout > 0 && now >= inactiveAt,
-    recoveryRequested: recovery.requested && !recovery.cancelled,
+    recoveryRequested: recovery.active && !recovery.cancelled,
+    currentRequestId: currentRequestId.toString(),
     approvalCount: Number(recovery.approvalCount),
     threshold: Number(vault.threshold),
+    unlockDelay,
+    delaySecondsRemaining: Math.max(0, delayReleaseAt - now),
+    delayElapsed: recovery.active && now >= delayReleaseAt,
   };
 }
 
 export async function loadRecoveryProgress(input: { vaultId: bigint }) {
   const publicClient = createPublicClient({
-    chain: storyAeneid,
-    transport: http(rpcUrl),
+    chain: botChain,
+    transport: http(BOTCHAIN_MAINNET_RPC),
   });
-  const [vault, recovery, guardians] = await Promise.all([
+  const [vault, recovery, guardians, currentRequestId] = await Promise.all([
     publicClient.readContract({
       address: clavisAddress,
       abi: clavisAbi,
@@ -574,293 +696,74 @@ export async function loadRecoveryProgress(input: { vaultId: bigint }) {
       functionName: "getGuardians",
       args: [input.vaultId],
     }),
+    publicClient.readContract({
+      address: clavisAddress,
+      abi: clavisAbi,
+      functionName: "vaultCurrentRequestId",
+      args: [input.vaultId],
+    }),
   ]);
+
   const approvals = await Promise.all(
     guardians.map(async (guardian) => ({
       guardian: guardian.toLowerCase(),
-      approved: await publicClient.readContract({
-        address: clavisAddress,
-        abi: clavisAbi,
-        functionName: "hasApproved",
-        args: [input.vaultId, guardian],
-      }),
+      approved: currentRequestId > BigInt(0)
+        ? await publicClient.readContract({
+            address: clavisAddress,
+            abi: clavisAbi,
+            functionName: "hasApproved",
+            args: [input.vaultId, currentRequestId, guardian],
+          })
+        : false,
     })),
   );
 
   return {
     threshold: Number(vault.threshold),
-    requested: recovery.requested && !recovery.cancelled,
+    balanceEther: formatEther(vault.balance),
+    status: vault.status === 1 ? ("Active" as const) : vault.status === 2 ? ("Released" as const) : ("NonExistent" as const),
+    currentRequestId: currentRequestId.toString(),
+    requested: recovery.active && !recovery.cancelled,
     approvalCount: Number(recovery.approvalCount),
     approvals,
   };
 }
 
-export async function cancelRecoveryOnChain(input: {
-  vaultId: bigint;
-  onStatus: (status: string) => void;
-}) {
-  input.onStatus("Preparing owner wallet and network...");
-  const { publicClient, walletClient, account } = await getWalletClients();
-  input.onStatus("Cancelling recovery request...");
-  await publicClient.simulateContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "cancelRecovery",
-    args: [input.vaultId],
-    account,
-  });
-  const hash = await walletClient.writeContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "cancelRecovery",
-    args: [input.vaultId],
-    account,
-    chain: storyAeneid,
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error("Cancel recovery transaction failed.");
-  return hash;
-}
-
-async function ensureStoryAeneid(walletClient: ReturnType<typeof createWalletClient>) {
-  const currentChainId = await walletClient.getChainId();
-  if (currentChainId === storyAeneid.id) return;
-
-  try {
-    await walletClient.switchChain({ id: storyAeneid.id });
-  } catch {
-    await walletClient.addChain({ chain: storyAeneid });
-    await walletClient.switchChain({ id: storyAeneid.id });
-  }
-}
-
-export async function sealVaultWithCdr(input: {
-  account: Address;
-  beneficiary: Address;
-  guardians: Address[];
-  threshold: number;
-  unlockDelaySeconds: number;
-  heartbeatTimeoutSeconds: number;
-  payload: CdrPayload;
-  onStatus: (status: string) => void;
-}) {
-  input.onStatus("Preparing wallet clients...");
-  const { publicClient, walletClient } = await getWalletClients(input.account);
-
-  input.onStatus("Creating Clavis vault...");
-  const createHash = await walletClient.writeContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "createVault",
-    args: [
-      input.beneficiary,
-      input.guardians,
-      input.threshold,
-      input.unlockDelaySeconds,
-      input.heartbeatTimeoutSeconds,
-      "",
-    ],
-    account: input.account,
-    chain: storyAeneid,
-  });
-  const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash });
-  if (createReceipt.status !== "success") throw new Error("Create vault transaction failed.");
-
-  const createdLogs = parseEventLogs({
-    abi: clavisAbi,
-    eventName: "VaultCreated",
-    logs: createReceipt.logs,
-  });
-  const vaultId = createdLogs[0]?.args.vaultId;
-  if (vaultId === undefined) throw new Error("Could not read created vault ID from transaction logs.");
-
-  input.onStatus("Initializing CDR encryption...");
-  await initWasm();
-  const observer = new Observer({
-    network: "testnet",
-    publicClient,
-    apiUrl: storyApiUrl,
-  });
-  const uploader = new Uploader({
-    network: "testnet",
-    publicClient,
-    walletClient,
-    observer,
-  });
-
-  const conditionData = encodeAbiParameters([{ type: "uint256" }], [vaultId]);
-
-  input.onStatus("Allocating CDR vault...");
-  const globalPubKey = await observer.getGlobalPubKey();
-  const { uuid, txHash: allocateTxHash } = await uploader.allocate({
-    updatable: false,
-    writeConditionAddr: clavisAddress,
-    readConditionAddr: clavisAddress,
-    writeConditionData: conditionData,
-    readConditionData: conditionData,
-    skipConditionValidation: false,
-  });
-
-  input.onStatus("Encrypting secret in browser...");
-  const ciphertext = await uploader.encryptDataKey({
-    dataKey: encodePayload(input.payload),
-    globalPubKey,
-    label: uuidToLabel(uuid),
-  });
-
-  input.onStatus("Writing encrypted payload to CDR...");
-  const { txHash: writeTxHash } = await uploader.write({
-    uuid,
-    accessAuxData: "0x",
-    encryptedData: toHex(ciphertext.raw),
-  });
-
-  input.onStatus("Linking CDR UUID to Clavis vault...");
-  const setRefHash = await walletClient.writeContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "setCdrRef",
-    args: [vaultId, String(uuid)],
-    account: input.account,
-    chain: storyAeneid,
-  });
-  const setRefReceipt = await publicClient.waitForTransactionReceipt({ hash: setRefHash });
-  if (setRefReceipt.status !== "success") throw new Error("Set CDR reference transaction failed.");
-
-  return {
-    vaultId,
-    uuid,
-    createHash,
-    allocateTxHash,
-    writeTxHash,
-    setRefHash,
-  } satisfies {
-    vaultId: bigint;
-    uuid: number;
-    createHash: Hex;
-    allocateTxHash: Hex;
-    writeTxHash: Hex;
-    setRefHash: Hex;
-  };
-}
-
-export async function requestRecoveryOnChain(input: {
-  vaultId: bigint;
-  onStatus: (status: string) => void;
-}) {
-  input.onStatus("Preparing wallet and network...");
-  const { publicClient, walletClient, account } = await getWalletClients();
-  input.onStatus("Requesting recovery...");
-  await publicClient.simulateContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "requestRecovery",
-    args: [input.vaultId],
-    account,
-  });
-  const hash = await walletClient.writeContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "requestRecovery",
-    args: [input.vaultId],
-    account,
-    chain: storyAeneid,
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error("Recovery request transaction failed.");
-  return hash;
-}
-
-export async function approveRecoveryOnChain(input: {
-  vaultId: bigint;
-  onStatus: (status: string) => void;
-}) {
-  input.onStatus("Preparing wallet and network...");
-  const { publicClient, walletClient, account } = await getWalletClients();
-  input.onStatus("Submitting guardian approval...");
-  await publicClient.simulateContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "approveRecovery",
-    args: [input.vaultId],
-    account,
-  });
-  const hash = await walletClient.writeContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "approveRecovery",
-    args: [input.vaultId],
-    account,
-    chain: storyAeneid,
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error("Guardian approval transaction failed.");
-  return hash;
-}
-
-export async function sendHeartbeatOnChain(input: {
-  vaultId: bigint;
-  onStatus: (status: string) => void;
-}) {
-  input.onStatus("Preparing wallet and network...");
-  const { publicClient, walletClient, account } = await getWalletClients();
-  input.onStatus("Sending proof-of-life heartbeat...");
-  const hash = await walletClient.writeContract({
-    address: clavisAddress,
-    abi: clavisAbi,
-    functionName: "heartbeat",
-    args: [input.vaultId],
-    account,
-    chain: storyAeneid,
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error("Heartbeat transaction failed.");
-  return hash;
-}
-
 export async function unlockCdrVault(input: {
   vaultId: bigint;
-  uuid: number;
   onStatus: (status: string) => void;
 }) {
-  input.onStatus("Preparing wallet and network...");
-  const { publicClient, walletClient, account } = await getWalletClients();
+  input.onStatus("Checking inheritance claim eligibility on BOT Chain Mainnet...");
+  const { publicClient, account } = await getWalletClients();
 
-  const canRead = await publicClient.readContract({
+  const canClaim = await publicClient.readContract({
     address: clavisAddress,
     abi: clavisAbi,
-    functionName: "canRead",
+    functionName: "canClaim",
     args: [input.vaultId, account],
   });
-  if (!canRead) {
-    throw new Error("Clavis says this wallet cannot read yet. Complete request, guardian approvals, timeout, and final delay.");
+
+  if (!canClaim) {
+    throw new Error(
+      "Clavis says this wallet cannot claim yet. Verify that inactivity period has passed, guardian approvals meet threshold, and unlock delay has elapsed."
+    );
   }
 
-  input.onStatus("Initializing CDR read...");
-  await initWasm();
-  const observer = new Observer({
-    network: "testnet",
-    publicClient,
-    apiUrl: storyApiUrl,
-  });
-  const consumer = new Consumer({
-    network: "testnet",
-    publicClient,
-    walletClient,
-    observer,
-    apiUrl: storyApiUrl,
+  input.onStatus("Claim eligibility verified. Executing on-chain inheritance claim on BOT Chain Mainnet...");
+  const hash = await claimInheritanceOnChain({
+    vaultId: input.vaultId,
+    onStatus: input.onStatus,
   });
 
-  input.onStatus("Requesting validator partial decryptions...");
-  const { dataKey, txHash } = await consumer.accessCDR({
-    uuid: input.uuid,
-    accessAuxData: "0x",
-    timeoutMs: 120_000,
-  });
-
-  input.onStatus("CDR read complete.");
+  input.onStatus("Inheritance payout confirmed on BOT Chain Mainnet!");
   return {
-    txHash,
-    payload: decodePayload(dataKey),
+    txHash: hash,
+    payload: {
+      metadata: {
+        kind: "text" as const,
+        size: 0,
+      },
+      bytes: new Uint8Array(),
+    },
   };
 }

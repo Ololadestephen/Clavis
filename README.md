@@ -1,226 +1,76 @@
-# Clavis
+# Clavis: Native-BOT Inheritance Vault
 
-Clavis is a programmable private recovery vault for digital secrets and files. It uses CDR to keep private data sealed, while a Story Aeneid smart contract decides when a beneficiary is allowed to unlock it.
+Clavis is a programmable native-BOT inheritance escrow vault on BOT Chain. It provides multi-party guardian consensus, proof-of-life heartbeats, timelocked recovery execution, and financial isolation to release native funds to a designated beneficiary after extended owner inactivity.
 
-Live app: https://clavis-rust.vercel.app/
+## Mission & Scope
 
-## Why Clavis Exists
+Clavis operates as an on-chain native-BOT inheritance vault holding and releasing funds. It is not an arbitrary secret decryptor or off-chain CDR service.
 
-Wallets, private keys, recovery notes, legal instructions, and important files are often either too exposed or impossible for trusted people to recover when something happens. Clavis creates a recovery plan with programmable rules:
+> **Notice:** This is an on-chain programmable asset release mechanism governed by owner heartbeats and guardian consensus. It does not verify legal death, create an attested will, or recover arbitrary external private keys.
 
-1. The owner seals a private note or encrypted file.
-2. The owner names one beneficiary and three guardians.
-3. The owner sets proof-of-life duration, guardian threshold, and final delay.
-4. The beneficiary can request recovery only after the owner becomes inactive.
-5. Guardians approve the request.
-6. CDR releases the private payload only when the contract condition passes.
+## Core Lifecycle
 
-## What We Are Solving With CDR
+1. **Owner Setup & Deposit**: The owner creates an isolated vault with a fixed beneficiary, unique guardians, consensus threshold, proof-of-life inactivity timeout, and final timelock release delay. Native BOT can be deposited initially or at any point before release.
+2. **Owner Custody & Control**: Before terminal release, the owner retains complete custody of their funds and can withdraw deposited BOT, deposit additional funds, send heartbeats to reset inactivity, or cancel active recovery requests.
+3. **Inactivity & Proof-of-Life**: If the owner does not send a heartbeat within the configured timeout window, the vault enters an inactive state, enabling the beneficiary to initiate a recovery request.
+4. **Monotonic Request IDs & Stale Approval Invalidation**: Each recovery request receives a unique monotonic request ID. Guardian approvals are strictly bound to this ID. If an owner sends a heartbeat or cancels the request, the request is invalidated; previous approvals cannot authorize future requests.
+5. **Guardian Consensus**: Configured guardians inspect the active request and submit approvals on BOT Chain without having custody of the funds.
+6. **Timelock Delay & Payout**: Once guardian approvals reach the threshold, the inactivity window holds, and the timelock delay elapses, the beneficiary executes `claim()`. The contract atomically writes terminal state, zeros vault liability, and transfers native BOT directly to the beneficiary's wallet.
+7. **Terminal State**: A released vault cannot receive further deposits, withdrawals, heartbeats, requests, or duplicate claims.
 
-Most recovery tools have an uncomfortable tradeoff: either the secret is stored somewhere a server can eventually see it, or it is encrypted but not programmable. Clavis uses CDR so the private payload can stay sealed while still being controlled by on-chain rules.
+## Security & Custody Invariants
 
-CDR matters here because:
+- **Role Separation**: Owner and beneficiary must be distinct addresses; configured guardians must be distinct from both.
+- **Deposit Control**: Only the vault owner can deposit, withdraw unreleased funds, send heartbeats, or cancel requests.
+- **Isolated Accounting**: Each vault tracks credited balances explicitly. Forced transfers, account balance changes, or withdrawals on one vault cannot affect another vault.
+- **Per-Request Approvals**: Approvals apply strictly to one request ID and are permanently invalidated by owner heartbeats or cancellations.
+- **Atomic Terminal Release**: Payout uses checks-effects-interactions and reentrancy protection. Terminal state is recorded and liability cleared before external transfer; failed transfers revert all state changes.
 
-- The secret is not exposed to the app, guardians, or beneficiary by default.
-- The smart contract can dynamically decide when access is allowed.
-- Recovery can depend on multiple conditions: owner inactivity, guardian threshold, recovery request, final delay, and no cancellation.
-- Files can live encrypted on IPFS while CDR protects the decryption metadata.
+## Network & Chain Parameters
 
-In short, Clavis is not just storing encrypted data. It turns private recovery into a programmable object: CDR holds the private payload, and the Clavis contract decides when it can be released.
+- **Network**: BOT Chain Mainnet (Chain ID `677`) / Testnet (`968`)
+- **Native Currency**: BOT (18 decimals)
+- **RPC Endpoint**: `https://rpc.botchain.ai`
+- **Block Explorer**: `https://scan.botchain.ai`
+- **Developer Docs**: `https://dev-docs.botchain.ai`
 
-## Deployed Contract
+## Verification & Testing
 
-Network: Story Aeneid testnet
+Contract test suite covers all lifecycle states, role validation, boundary conditions, failed transfers, reentrancy attacks, multi-vault balance isolation, and fuzzing:
 
-ClavisVault:
-
-```text
-0x3948d6ac6575526e61f00979124003319d849cd0
+```bash
+forge test --offline
 ```
 
-Deploy transaction:
+Build the Next.js frontend application:
 
-```text
-0xea9868620547c54fcab5951f6c56a3696dc980a6c5bb65819a95f112dad0dfed
+```bash
+npm --prefix frontend run build
 ```
 
-## How The Recovery Rule Works
+Run contract deployment to BOT Chain:
 
-The owner always retains access. The beneficiary can read only when all required conditions pass:
-
-- Recovery has been requested.
-- Recovery has not been cancelled.
-- Guardian approval count meets the configured threshold.
-- The final delay has elapsed.
-- The owner proof-of-life window has expired.
-
-The read gate lives in `src/ClavisVault.sol`:
-
-```solidity
-canRead(uint256 vaultId, address reader)
+```bash
+npm run bot:deploy
 ```
-
-CDR calls the contract through:
-
-```solidity
-checkReadCondition(...)
-checkWriteCondition(...)
-```
-
-The CDR condition data is `abi.encode(vaultId)`, so each encrypted CDR vault is linked to the exact on-chain recovery rule.
-
-## File Storage Model
-
-Small notes are encrypted and written directly to CDR.
-
-Files are handled differently because CDR payload size is limited on the current testnet:
-
-1. The browser encrypts the file with AES-GCM.
-2. The encrypted file is uploaded to IPFS through Pinata.
-3. CDR stores the file metadata, CID, gateway URL, AES key, and IV.
-4. The beneficiary can recover and decrypt the file only after CDR access succeeds.
-
-This still uses CDR for the sensitive unlock material. IPFS only stores encrypted bytes.
-
-## User Flow
-
-Owner:
-
-1. Connect wallet.
-2. Create vault.
-3. Add beneficiary and guardians.
-4. Set threshold, proof-of-life duration, and final delay.
-5. Seal the note or encrypted file.
-6. Copy the beneficiary and guardian invite messages.
-7. Send heartbeat periodically.
-8. Cancel recovery if they return while recovery is active.
-
-Beneficiary:
-
-1. Open the recovery page.
-2. Enter vault ID.
-3. Connect beneficiary wallet.
-4. Request recovery once proof-of-life has expired.
-5. Open unlock page after guardian approvals and final delay.
-
-Guardian:
-
-1. Open guardian approval page.
-2. Enter vault ID.
-3. Connect guardian wallet.
-4. Approve recovery after the beneficiary has requested it.
-
-## Tech Stack
-
-- Next.js App Router
-- TypeScript
-- Story Aeneid
-- Solidity / Foundry
-- CDR SDK
-- Viem
-- IPFS via Pinata
-- Vercel Analytics
 
 ## Repository Structure
 
 ```text
-src/ClavisVault.sol              Smart contract permission engine
-test/ClavisVault.t.sol           Foundry tests
-scripts/deploy-clavis.ts         Contract deployment script
-scripts/cdr-*.ts                 CDR demo scripts
-frontend/app                     Next.js application
-frontend/app/api/ipfs/upload     Pinata/IPFS upload route
-backend/clavisGateway.ts         Backend/CDR integration boundary notes
+src/ClavisVault.sol              Native-BOT inheritance escrow vault contract
+test/ClavisVault.t.sol           Foundry invariant, lifecycle, fuzz, and reentrancy test suite
+scripts/config.ts                BOT Chain and network configuration
+scripts/clavisAbi.ts             Contract ABI definition
+scripts/deploy-botchain.ts       BOT Chain deployment script
+frontend/app                     Next.js application (dashboard, create-vault, beneficiary, guardian, unlock)
+frontend/app/create-vault/       Vault creation and configuration interface
+frontend/app/dashboard/          Owner dashboard: balance, heartbeat, deposits/withdrawals, cancellation
+frontend/app/beneficiary/        Beneficiary recovery request and inheritance claim
+frontend/app/guardian/           Guardian multi-party approval
+frontend/app/unlock/             Public on-chain release and audit status
+docs/HISTORICAL_CDR.md           Historical Story Protocol CDR architecture and proof archive
 ```
 
-## Local Development
+## Historical Story Protocol CDR Proofs
 
-Install root dependencies:
-
-```sh
-npm install
-```
-
-Install frontend dependencies:
-
-```sh
-cd frontend
-npm install
-```
-
-Run the frontend:
-
-```sh
-cd frontend
-npm run dev
-```
-
-Build the frontend:
-
-```sh
-cd frontend
-npm run build
-```
-
-Run contract tests:
-
-```sh
-forge test
-```
-
-If Foundry on macOS crashes while trying to initialize signature/gas reporting, this command avoids the optional gas report path:
-
-```sh
-FOUNDRY_GAS_REPORTS='[]' forge test
-```
-
-## Environment Variables
-
-Root `.env` for scripts:
-
-```text
-RPC_URL=https://aeneid.storyrpc.io
-STORY_API_URL=http://172.192.41.96:1317
-OWNER_PRIVATE_KEY=
-BENEFICIARY_PRIVATE_KEY=
-GUARDIAN_ONE_PRIVATE_KEY=
-GUARDIAN_TWO_PRIVATE_KEY=
-GUARDIAN_THREE_PRIVATE_KEY=
-CLAVIS_CONTRACT_ADDRESS=0x3948d6ac6575526e61f00979124003319d849cd0
-```
-
-Frontend `.env.local`:
-
-```text
-NEXT_PUBLIC_APP_URL=https://clavis-rust.vercel.app
-NEXT_PUBLIC_RPC_URL=https://aeneid.storyrpc.io
-NEXT_PUBLIC_STORY_API_URL=/api/story
-STORY_API_URL=http://172.192.41.96:1317
-NEXT_PUBLIC_CLAVIS_CONTRACT_ADDRESS=0x3948d6ac6575526e61f00979124003319d849cd0
-NEXT_PUBLIC_IPFS_GATEWAY=https://ipfs.io/ipfs
-PINATA_JWT=
-```
-
-`PINATA_API_KEY` and `PINATA_SECRET_API_KEY` can be used instead of `PINATA_JWT`.
-
-
-## Useful Scripts
-
-Deploy the contract:
-
-```sh
-npm run cdr:deploy
-```
-
-Run demo flows:
-
-```sh
-npm run cdr:demo
-npm run cdr:advanced
-CLAVIS_FILE_PATH=./recovery-note.pdf npm run cdr:file
-```
-
-
-## Submission Summary
-
-Clavis demonstrates programmable private data recovery using CDR, on-chain proof-of-life, guardian threshold approval, final delay, and CDR-gated unlock. It is not just encrypted storage; it is private data governed by dynamic, composable access rules.
+Clavis originally piloted read-condition validation on the Story Protocol Aeneid testnet using Confidential Data Recovery (CDR). Historical contracts (`0x3948d6ac6575526e61f00979124003319d849cd0`) and demonstration scripts remain permanently documented in [`docs/HISTORICAL_CDR.md`](docs/HISTORICAL_CDR.md).
